@@ -22,6 +22,7 @@ import numpy as np
 
 from .dsp import RFConfig
 from .bit_analysis import interpret_symbols, validate_options
+from .iq_envelope import analyze_cu8_envelope
 
 TRACE_NAME = re.compile(r"^[0-9a-f]{32}$")
 MAX_CAPTURES_PER_SCAN = 48
@@ -265,6 +266,43 @@ class TraceArchive:
             "modulation_hypothesis": "2-FSK",
         })
         return output
+
+    def envelope_summary(self, trace_id: str) -> dict | None:
+        """Read at most 1 second of CU8 and return aggregate energy metrics.
+
+        Archived metadata and raw samples are never modified. A malformed
+        or inconsistent file is rejected rather than silently reinterpreted.
+        """
+        meta = self.read(trace_id)
+        if meta is None:
+            return None
+        rate = meta["sample_rate"]
+        total = meta["sample_count"]
+        first = meta["active_from_sample"]
+        last = meta["active_to_sample"]
+        if (type(rate) is not int or rate != RFConfig().sample_rate
+                or type(total) is not int or not 2 <= total <= rate
+                or type(first) is not int or type(last) is not int
+                or not 0 <= first < last <= total):
+            raise ValueError("Incompatible CU8 archive metadata")
+        filename = self.path / (self._id(trace_id) + ".cu8")
+        descriptor = os.open(filename, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(descriptor, "rb") as stream:
+            details = os.fstat(stream.fileno())
+            if not stat.S_ISREG(details.st_mode) or details.st_size != total * 2:
+                raise ValueError("Stored CU8 file size differs from archive metadata")
+            raw = stream.read(total * 2)
+        if len(raw) != total * 2:
+            raise ValueError("Incomplete archived CU8 file")
+        envelope = analyze_cu8_envelope(raw, rate, first, last)
+        envelope.update({
+            "id": self._id(trace_id),
+            "event_at": meta["event_at"],
+            "duration_ms": meta["duration_ms"],
+            "peak_snr_db": meta["peak_snr_db"],
+            "source": "rtl_sdr",
+        })
+        return envelope
 
     def sample_page(self, trace_id: str, start: int, count: int) -> dict | None:
         if type(start) is not int or start < 0 or type(count) is not int \

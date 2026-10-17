@@ -16,6 +16,7 @@ from .receiver import Monitor
 from .storage import EventStore
 from .iq_trace import TraceArchive
 from .pair_timing import summarize_pair_timing
+from .iq_envelope import compare_envelope_reports
 
 WEB = Path(__file__).resolve().parent / "web"
 
@@ -151,6 +152,51 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                     self._json(summarize_pair_timing(trace_archive.list_recent(limit=48)))
                 except (ValueError, TypeError, OSError):
                     self._json({"message": "Burst-Paar-Auswertung nicht verfügbar."}, 409)
+            elif urlsplit(self.path).path == "/api/iq/pair-quality":
+                # Read existing bounded IQ files for 1 ms envelope statistics,
+                # never return raw samples, decoded bits or vehicle commands.
+                try:
+                    params = parse_qs(urlsplit(self.path).query,
+                                      strict_parsing=True, keep_blank_values=True)
+                    if set(params) != {"pair"} or len(params["pair"]) != 1:
+                        raise ValueError("Missing or duplicate pair index")
+                    text_index = params["pair"][0]
+                    if not text_index.isascii() or not text_index.isdecimal():
+                        raise ValueError("Invalid pair index")
+                    index = int(text_index)
+                    if not 1 <= index <= 24:
+                        raise ValueError("Pair index outside supported range")
+                    grouped = summarize_pair_timing(
+                        trace_archive.list_recent(limit=48))
+                    if index > len(grouped["pairs"]):
+                        self._json({"message": "Paar nicht vorhanden."}, 404)
+                        return
+                    if not decode_slots.acquire(blocking=False):
+                        self._json({"message": "I/Q-Analyse ausgelastet."}, 429)
+                        return
+                    try:
+                        pair = grouped["pairs"][index - 1]
+                        first = trace_archive.envelope_summary(pair["first"]["id"])
+                        second = trace_archive.envelope_summary(pair["second"]["id"])
+                    finally:
+                        decode_slots.release()
+                    if first is None or second is None:
+                        self._json({"message": "Aufnahme nicht mehr verfügbar."}, 404)
+                        return
+                    self._json({
+                        "pair_index": index,
+                        "start_gap_ms": pair["start_gap_ms"],
+                        "first": first,
+                        "second": second,
+                        "comparison": compare_envelope_reports(first, second),
+                        "source": "archived_rtl_sdr",
+                        "read_only": True,
+                        "contains_raw_iq_or_key_bits": False,
+                    })
+                except (ValueError, TypeError, KeyError, OverflowError):
+                    self._json({"message": "Ungültiger Paarindex oder I/Q-Daten."}, 400)
+                except OSError:
+                    self._json({"message": "Archivdatei nicht lesbar."}, 409)
             elif urlsplit(self.path).path == "/api/iq/trace":
                 try:
                     query = parse_qs(urlsplit(self.path).query,

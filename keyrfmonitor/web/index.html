@@ -174,6 +174,35 @@
           <tbody id="iq-pair-body"><tr><td colspan="7" class="empty">Noch keine Zeitdaten</td></tr></tbody>
         </table>
       </div>
+      <div class="iq-envelope-review" aria-labelledby="iq-envelope-title">
+        <div class="panel-head">
+          <div>
+            <h5 id="iq-envelope-title">I/Q-Hüllkurve – Signalflanken im Paar vergleichen</h5>
+            <span class="subtle">RMS-Leistung in 1-ms-Fenstern relativ zur jeweiligen lokalen Rauschreferenz, keine Nutzdaten</span>
+          </div>
+          <label for="iq-quality-pair">Zu prüfendes Paar
+            <select id="iq-quality-pair" disabled>
+              <option value="">Noch keine Paare</option>
+            </select>
+          </label>
+        </div>
+        <p id="iq-quality-status" class="subtle" role="status">Noch keine I/Q-Hüllkurve berechnet.</p>
+        <div class="iq-envelope-stats">
+          <div><span>Erkannte Dauer 1 / 2</span><strong id="iq-detector-durations">–</strong></div>
+          <div><span>Geschätzte aktive Dauer 1 / 2</span><strong id="iq-active-durations">–</strong></div>
+          <div><span>Startabweichung 1 / 2</span><strong id="iq-start-offsets">–</strong></div>
+          <div><span>Endabweichung 1 / 2</span><strong id="iq-end-offsets">–</strong></div>
+        </div>
+        <div class="iq-envelope-chart">
+          <canvas id="iq-envelope-canvas" width="900" height="250" role="img"
+                  aria-label="Hüllkurven beider Burstaufnahmen, relativ zum jeweiligen erkannten Start"></canvas>
+        </div>
+        <p id="iq-quality-conclusion" class="subtle" role="status">Noch keine Aussage möglich.</p>
+        <p class="subtle">Die Signalflanken werden aus gespeicherten 8-Bit-I/Q-Samples geschätzt.
+        1 ms ist nur die Rasterauflösung, keine garantierte Messgenauigkeit.
+        Ein auffälliger Randbereich beweist weder zusätzlichen Telegramminhalt
+        noch eine bestimmte Tastenfunktion.</p>
+      </div>
       <p id="iq-unpaired-status" class="subtle">Nicht zugeordnete Aufnahmen werden separat gezählt.</p>
       <p class="subtle">Die Paarung nutzt ausschließlich Startabstände von 400–650 ms (Referenz: 513 ms). Gleiche Sendeinhalte,
       Tastenfunktion und Rahmenanfang werden dadurch nicht bewiesen. Die zeitliche Reihenfolge ist nicht die bisherige Sortierung „neueste zuerst“.</p>
@@ -262,7 +291,7 @@
   <section class="panel events"><div class="panel-head"><h3>Letzte Messereignisse</h3><span class="subtle">Nur Metadaten</span></div>
     <div class="table-scroll"><table><thead><tr><th>Zeit (lokal)</th><th>Quelle</th><th>Typ</th><th>Dauer / Abstand</th><th>Pegelanstieg</th><th>SNR</th></tr></thead><tbody id="event-body"><tr><td colspan="6" class="empty">Noch keine Ereignisse</td></tr></tbody></table></div>
   </section>
-  <footer>MB-RF-Scan 0.9.1 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
+  <footer>MB-RF-Scan 0.9.2 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
 </div>
 </body>
 </html>
