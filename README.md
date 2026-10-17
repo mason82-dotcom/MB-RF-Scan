@@ -252,3 +252,22 @@ liefern selbst bei null Bursts `metrics_available: true` und null-SNR/-Dauer.
 Die `/api/sessions`-Schnittstelle bleibt schreibgeschützt und liefert maximal
 30 Sitzungen. Die Browseranwendung kann weiterhin weder `dump1090.service`
 anhalten noch einen privilegierten Terminalscan auslösen.
+
+## v0.7.0: Sitzungsdetails
+
+Mit `GET /api/session-detail?id=2&bucket=5` liefert die nur an Loopback
+gebundene API einen **zeitlichen Verlauf pro ausgewähltem Scan**. Die Werte
+werden aus den bereits existierenden SQLite-Ereignis-IDs errechnet;
+zurückgegeben werden ausschließlich aggregierte 5- oder 10-Sekunden-Buckets
+mit Burst-/Paaranzahl sowie mittlerem SNR und mittlerer Burstdauer.
+Zusätzlich werden SNR und Burstdauer in je fünf grobe Klassen eingeordnet.
+
+Die Auswertung ist auf maximal 360 Sekunden und 10.000 verknüpfte Ereignisse
+begrenzt; die API kennzeichnet ggf. ausgelassene Daten. Ein fehlender
+`timeline_available`-Wert bedeutet, dass ältere v0.5-Sitzungen nicht
+rückwirkend rekonstruierbar sind. Einzelne RF-Zeitstempel, Roh-IQ-Daten,
+Telegramm- oder Schlüsselbits werden nicht über den Endpunkt ausgegeben.
+
+Im Dashboard kann die Sitzung mit einem Auswahlmenü geändert werden.
+Auch diese Detailansicht ist ausschließlich lesend; sie stoppt weder
+`dump1090.service` noch startet sie einen RTL-SDR-Scan.

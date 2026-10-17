@@ -125,6 +125,45 @@ class SummaryHTTPTests(unittest.TestCase):
         self.assertNotIn("payload", item)
         self.assertNotIn("raw_iq", item)
 
+    def test_timeline_api_returns_only_aggregated_metadata(self):
+        store = EventStore(self.db)
+        session = store.start_session(20)
+        start = datetime.fromisoformat(store.recent_sessions()[0]["started_at"])
+        from datetime import timedelta
+        store.insert({
+            "kind": "burst",
+            "at": (start + timedelta(seconds=1)).isoformat(),
+            "duration_ms": 185, "peak_snr_db": 30,
+        })
+        store.finish_session(session, result="completed", restoration="verified",
+                             burst_count=1)
+        store.close()
+        with urlopen(self.base + f"/api/session-detail?id={session}&bucket=5", timeout=3) as response:
+            result = json.load(response)
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
+        self.assertEqual(result["session_id"], session)
+        self.assertEqual(result["included_bursts"], 1)
+        self.assertEqual(result["buckets"][0]["avg_snr_db"], 30)
+        self.assertTrue(result["timeline_available"])
+        self.assertNotIn("events", result)
+        self.assertNotIn("raw_iq", result)
+        self.assertNotIn("key_codes", result)
+
+    def test_timeline_api_rejects_bad_ids_buckets_and_unknown_sessions(self):
+        bad = (
+            "id=1&bucket=2", "id=1&bucket=10&other=1", "id=-1&bucket=5",
+            "id=abc&bucket=5", "id=1&bucket=5&id=2", "id=1&bucket=",
+            "bucket=5", "id=1", "id=%C3%A4&bucket=5",
+        )
+        for query in bad:
+            with self.subTest(query=query), self.assertRaises(HTTPError) as raised:
+                urlopen(self.base + "/api/session-detail?" + query, timeout=3)
+            self.assertEqual(raised.exception.code, 400)
+        with self.assertRaises(HTTPError) as missing:
+            urlopen(self.base + "/api/session-detail?id=999999&bucket=5", timeout=3)
+        self.assertEqual(missing.exception.code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

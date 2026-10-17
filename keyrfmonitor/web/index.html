@@ -96,6 +96,30 @@
       <div class="comparison-scroll"><div id="comparison-chart" class="comparison-chart" role="img" aria-label="Keine Sitzungen für einen Vergleich vorhanden"></div></div>
       <p id="comparison-note" class="subtle">Bursts und Paare werden für unterschiedlich lange Scans auf Ereignisse pro Minute normiert.</p>
     </div>
+    <section class="session-detail-panel" aria-labelledby="detail-title">
+      <div class="detail-head">
+        <div><h4 id="detail-title">Sitzungsdetails</h4>
+          <p class="subtle">Zeitlicher Signalverlauf und grobe Verteilungen · nur Metadaten</p></div>
+        <label class="select-label" for="session-detail-choice">Scan auswählen
+          <select id="session-detail-choice" disabled>
+            <option value="">Keine Sitzung verfügbar</option>
+          </select>
+        </label>
+      </div>
+      <p class="subtle" id="session-detail-status" role="status">Noch kein Scan ausgewählt.</p>
+      <div class="detail-summary">
+        <div><span>Bursts im Verlauf</span><strong id="detail-bursts">–</strong></div>
+        <div><span>Paare im Verlauf</span><strong id="detail-pairs">–</strong></div>
+        <div><span>Intervall</span><strong id="detail-step">5 s</strong></div>
+      </div>
+      <div class="detail-chart-scroll"><div id="detail-timeline" class="detail-timeline" role="img" aria-label="Kein zeitlicher Verlauf geladen"></div></div>
+      <div class="detail-legends"><span class="legend-burst">Bursts</span><span class="legend-pair">Burst-Paare</span></div>
+      <div class="detail-distributions">
+        <div><h5>SNR-Verteilung</h5><div id="detail-snr" class="detail-histogram"></div></div>
+        <div><h5>Burstdauer-Verteilung</h5><div id="detail-duration" class="detail-histogram"></div></div>
+      </div>
+      <p id="session-detail-warning" class="subtle" role="status"></p>
+    </section>
     <div class="session-review" aria-live="polite">
       <strong>Diagnosehinweise</strong>
       <p id="session-diagnostics" class="subtle">Keine aktuellen Auffälligkeiten in den gespeicherten Sitzungen.</p>
@@ -109,7 +133,7 @@
   <section class="panel events"><div class="panel-head"><h3>Letzte Messereignisse</h3><span class="subtle">Nur Metadaten</span></div>
     <div class="table-scroll"><table><thead><tr><th>Zeit (lokal)</th><th>Quelle</th><th>Typ</th><th>Dauer / Abstand</th><th>Pegelanstieg</th><th>SNR</th></tr></thead><tbody id="event-body"><tr><td colspan="6" class="empty">Noch keine Ereignisse</td></tr></tbody></table></div>
   </section>
-  <footer>MB-RF-Scan 0.6.0 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
+  <footer>MB-RF-Scan 0.7.0 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
 </div>
 </body>
 </html>
