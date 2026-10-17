@@ -290,8 +290,12 @@ werden unter `~/.local/share/keyrfmonitor/iq-traces/` als private
 Funksignale enthalten: **nicht öffentlich hochladen oder teilen**.
 
 Die Browseransicht benötigt weiterhin einen lokalen SSH-Tunnel
-(`127.0.0.1:8890`), und ihre IQ-Endpunkte erfordern das dynamische
-Dashboard-Sitzungstoken. Der Benutzer kann sämtliche Samples einer
+(`127.0.0.1:8890`), und ihre IQ-Endpunkte erfordern ein **separates privates IQ-Zugriffstoken**,
+das nicht vom Webserver ausgeliefert wird. Auf dem Pi lässt es sich mit
+`cat ~/.local/share/keyrfmonitor/iq-traces/iq-access.token` auslesen. Dieses
+Token nur in das Passwortfeld der lokal geöffneten IQ-Ansicht eingeben,
+nicht in Logs, Chats oder öffentliche Dokumente kopieren. Der Browser behält
+das Token ausschließlich im Arbeitsspeicher und entfernt es aus dem Eingabefeld. Der Benutzer kann sämtliche Samples einer
 Aufnahme seitenweise (512/2048/8192 Samples) im I/Q-Amplitudenplot,
 Konstellationsdiagramm und FFT-Spektrum ansehen. Zusätzlich wird pro
 erkanntem Burst eine auf 2.000 Baud basierende FSK-**Bithypothese**

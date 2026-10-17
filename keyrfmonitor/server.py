@@ -96,14 +96,18 @@ def serve(host: str = "127.0.0.1", port: int = 8765, db_path: str | None = None)
                 except (ValueError, OverflowError):
                     self._json({"message": "Zeitfenster: 6, 24 oder 168 Stunden."}, 400)
             elif self.path == "/api/iq/traces":
-                if self.headers.get("X-RFMonitor-Token") != csrf:
-                    self._json({"message": "Ungültiges Zugriffstoken"}, 403)
+                if not secrets.compare_digest(
+                        self.headers.get("X-IQ-Access-Token", ""),
+                        trace_archive.access_token):
+                    self._json({"message": "IQ-Zugriff nicht freigeschaltet"}, 403)
                     return
                 self._json({"traces": trace_archive.list_recent(),
                             "capture_mode": "explicit_cli_only", "tx_enabled": False})
             elif urlsplit(self.path).path == "/api/iq/trace":
-                if self.headers.get("X-RFMonitor-Token") != csrf:
-                    self._json({"message": "Ungültiges Zugriffstoken"}, 403)
+                if not secrets.compare_digest(
+                        self.headers.get("X-IQ-Access-Token", ""),
+                        trace_archive.access_token):
+                    self._json({"message": "IQ-Zugriff nicht freigeschaltet"}, 403)
                     return
                 try:
                     query = parse_qs(urlsplit(self.path).query,
@@ -116,8 +120,10 @@ def serve(host: str = "127.0.0.1", port: int = 8765, db_path: str | None = None)
                 except (ValueError, OverflowError):
                     self._json({"message": "Ungültige Trace-ID"}, 400)
             elif urlsplit(self.path).path == "/api/iq/samples":
-                if self.headers.get("X-RFMonitor-Token") != csrf:
-                    self._json({"message": "Ungültiges Zugriffstoken"}, 403)
+                if not secrets.compare_digest(
+                        self.headers.get("X-IQ-Access-Token", ""),
+                        trace_archive.access_token):
+                    self._json({"message": "IQ-Zugriff nicht freigeschaltet"}, 403)
                     return
                 try:
                     query = parse_qs(urlsplit(self.path).query,

@@ -192,9 +192,15 @@ class SummaryHTTPTests(unittest.TestCase):
         with urlopen(self.base + "/", timeout=4) as response:
             html = response.read().decode("utf-8")
         token = re.search(r'<meta name="rf-token" content="([^"]+)">', html).group(1)
+        self.assertNotEqual(token, archive.access_token)
+        self.assertNotIn(archive.access_token, html)
+        with self.assertRaises(HTTPError) as csrf_only:
+            urlopen(Request(self.base + paths[0], headers={
+                "X-RFMonitor-Token": token}), timeout=4)
+        self.assertEqual(csrf_only.exception.code, 403)
         def authorized(path):
             return urlopen(Request(self.base + path, headers={
-                "X-RFMonitor-Token": token}), timeout=4)
+                "X-IQ-Access-Token": archive.access_token}), timeout=4)
         with authorized(paths[0]) as result:
             found = json.load(result)
         self.assertEqual(len(found["traces"]), 1)

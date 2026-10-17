@@ -14,6 +14,7 @@ import math
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import uuid
 
@@ -98,6 +99,20 @@ class TraceArchive:
             raise ValueError("Trace directory must not be a symlink")
         self.path.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(self.path, 0o700)
+        self.access_token_file = self.path / "iq-access.token"
+        if self.access_token_file.is_symlink():
+            raise ValueError("IQ access token must not be a symlink")
+        if not self.access_token_file.exists():
+            try:
+                self._private_write(
+                    self.access_token_file, secrets.token_urlsafe(32).encode("ascii"))
+            except FileExistsError:
+                pass
+        if self.access_token_file.stat().st_mode & 0o077:
+            raise PermissionError("IQ token must only be readable by its owner")
+        self.access_token = self.access_token_file.read_text(encoding="ascii").strip()
+        if len(self.access_token) < 32:
+            raise ValueError("IQ access token is invalid")
 
     @staticmethod
     def _id(value: str) -> str:
