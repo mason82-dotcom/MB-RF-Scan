@@ -206,6 +206,46 @@ class ScanModeTests(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertIn("20 und 300", err.getvalue())
 
+
+    def test_regular_cli_scan_never_creates_raw_iq_archive(self):
+        ctrl = FakeControl()
+        with patch("keyrfmonitor.adsb_session.shutil.which", return_value="/usr/bin/rtl_sdr"), \
+             patch("keyrfmonitor.adsb_session.TraceArchive",
+                   side_effect=AssertionError("IQ must remain opt-in")), \
+             patch("keyrfmonitor.adsb_session.Monitor", FakeMonitor), \
+             patch("keyrfmonitor.adsb_session.time.monotonic", side_effect=[0, 21]), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(run_scan(20, control=ctrl, database=self.path), 0)
+        self.assertFalse((Path(self.path).parent / "iq-traces").exists())
+        self.assertTrue(ctrl.active)
+
+    def test_opt_in_iq_cli_scan_preserves_adsb_restoration(self):
+        class TraceAwareMonitor(FakeMonitor):
+            def __init__(self, store, config=None, trace=None):
+                super().__init__(store)
+                self.trace = trace
+
+        ctrl = FakeControl()
+        output = io.StringIO()
+        with patch("keyrfmonitor.adsb_session.shutil.which", return_value="/usr/bin/rtl_sdr"), \
+             patch("keyrfmonitor.adsb_session.Monitor", TraceAwareMonitor), \
+             patch("keyrfmonitor.adsb_session.time.monotonic", side_effect=[0, 21]), \
+             contextlib.redirect_stdout(output):
+            self.assertEqual(run_scan(20, control=ctrl, database=self.path,
+                                      capture_iq=True), 0)
+        self.assertTrue(ctrl.active)
+        self.assertEqual(ctrl.commands[-2:], ["restore", "disarm"])
+        self.assertTrue((Path(self.path).parent / "iq-traces").is_dir())
+        self.assertIn("IQ-Traces: 0 gespeichert", output.getvalue())
+
+    def test_cli_iq_flag_is_explicit_and_parser_only(self):
+        with patch("keyrfmonitor.adsb_session.run_scan", return_value=0) as execute:
+            self.assertEqual(__main__.main(["scan", "--seconds", "20", "--iq"]), 0)
+            execute.assert_called_once_with(seconds=20, capture_iq=True)
+        with patch("keyrfmonitor.adsb_session.run_scan", return_value=0) as execute:
+            self.assertEqual(__main__.main(["scan", "--seconds", "20"]), 0)
+            execute.assert_called_once_with(seconds=20, capture_iq=False)
+
     def test_systemd_commands_fixed_and_watchdog_first(self):
         ctl = ADSBControl()
         calls = []

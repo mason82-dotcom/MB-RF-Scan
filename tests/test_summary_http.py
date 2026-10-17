@@ -7,11 +7,14 @@ import tempfile
 import threading
 import unittest
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from unittest.mock import patch
 
 from keyrfmonitor import server
 from keyrfmonitor.storage import EventStore
+from keyrfmonitor.iq_trace import TraceArchive
+from keyrfmonitor.dsp import RFConfig
+import re
 
 
 class SummaryHTTPTests(unittest.TestCase):
@@ -163,6 +166,62 @@ class SummaryHTTPTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as missing:
             urlopen(self.base + "/api/session-detail?id=999999&bucket=5", timeout=3)
         self.assertEqual(missing.exception.code, 404)
+
+    def test_iq_apis_require_dashboard_token_and_return_exact_cu8_samples(self):
+        archive = TraceArchive(self.db.parent / "iq-traces")
+        config = RFConfig()
+        raw = b"\x70\x90" * (config.samples_per_frame * 2)
+        event = {
+            "kind": "burst", "at": datetime.now(timezone.utc).isoformat(),
+            "start_s": .001, "end_s": .015, "duration_ms": 14.,
+            "peak_snr_db": 25., "peak_rise_db": 18.,
+        }
+        trace = archive.save(raw, event, config, 0)
+        self.assertIsNotNone(trace)
+        identity = trace["id"]
+        paths = [
+            "/api/iq/traces",
+            "/api/iq/trace?id=" + identity,
+            "/api/iq/samples?id=" + identity + "&start=0&count=512",
+        ]
+        for path in paths:
+            with self.subTest(path=path), self.assertRaises(HTTPError) as denied:
+                urlopen(self.base + path, timeout=4)
+            self.assertEqual(denied.exception.code, 403)
+
+        with urlopen(self.base + "/", timeout=4) as response:
+            html = response.read().decode("utf-8")
+        token = re.search(r'<meta name="rf-token" content="([^"]+)">', html).group(1)
+        def authorized(path):
+            return urlopen(Request(self.base + path, headers={
+                "X-RFMonitor-Token": token}), timeout=4)
+        with authorized(paths[0]) as result:
+            found = json.load(result)
+        self.assertEqual(len(found["traces"]), 1)
+        self.assertEqual(found["traces"][0]["id"], identity)
+        with authorized(paths[1]) as result:
+            metadata = json.load(result)["trace"]
+            self.assertFalse(metadata["decoder"]["verified"])
+            self.assertEqual(metadata["sample_count"], len(raw)//2)
+        with authorized(paths[2]) as result:
+            page = json.load(result)
+        self.assertEqual(page["count"], 512)
+        self.assertEqual(page["i"], [0x70]*512)
+        self.assertEqual(page["q"], [0x90]*512)
+        self.assertTrue(page["spectrum"])
+        for path in (
+            "/api/iq/trace?id=../../passwd",
+            "/api/iq/samples?id="+identity+"&start=0&count=9999999",
+            "/api/iq/samples?id="+identity+"&start=-1&count=512",
+            "/api/iq/samples?id="+identity+"&start=0&count=512&extra=1",
+        ):
+            with self.subTest(bad=path), self.assertRaises(HTTPError) as err:
+                authorized(path)
+            self.assertEqual(err.exception.code, 400)
+        with self.assertRaises(HTTPError) as missing:
+            authorized("/api/iq/trace?id="+"0"*32)
+        self.assertEqual(missing.exception.code, 404)
+
 
 
 if __name__ == "__main__":
