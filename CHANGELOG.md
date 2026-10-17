@@ -1,5 +1,14 @@
 # Änderungsprotokoll
 
+## v0.9.4 – Bytegenauer Rohdatenexport im Heimnetz-Dashboard
+
+- Zwei explizite Download-Schaltflächen für originale `.cu8`-Samples und `.json`-Metadaten einer ausgewählten bestehenden Aufnahme.
+- Neue GET-Schnittstelle `/api/iq/download?id=…&format=cu8|json` mit `Content-Disposition: attachment`, `no-store`, `nosniff` und byteidentischem Inhalt.
+- Strenge ID-/Formatprüfung, Symlink- und FIFO-Abwehr, prüfbare Dateigrößen- und Archivkonsistenzgrenzen; keine Manipulation von gespeicherten Dateien.
+- Auch JSON-Dateien können Bitentscheidungen enthalten. Nur im vertrauenswürdigen Heimnetz ohne Portfreigabe nutzen; bestehendes HTTP bleibt unverschlüsselt.
+- Kein neuer Scan, keine Aussendung, kein Replay und keinerlei Einfluss auf ADS-B.
+
+
 ## v0.9.3 – Schwellenwert-Sensitivität für archivierte I/Q-Signale
 
 - Separate, rein lesende Schwellenwertprüfung bei 6,0 bis 9,0 dB über lokalem Rauschpegel; Hüllkurvenabschnitte, längster Abschnitt und größte Lücke.

@@ -240,6 +240,19 @@
         </select>
       </label>
     </div>
+    <div class="iq-downloads" aria-labelledby="iq-export-title">
+      <div>
+        <h4 id="iq-export-title">Gespeicherte Rohdaten exportieren</h4>
+        <p class="subtle">Die ausgewählte Aufnahme unverändert herunterladen: rohe CU8-I/Q-Samples oder die originale JSON-Metadatendatei.</p>
+      </div>
+      <div class="iq-download-buttons">
+        <button id="iq-export-cu8" class="secondary" type="button" disabled>CU8-Rohdaten herunterladen</button>
+        <button id="iq-export-json" class="secondary" type="button" disabled>JSON-Metadaten herunterladen</button>
+      </div>
+      <p id="iq-export-status" class="subtle" role="status">Wähle zuerst eine gespeicherte Aufnahme.</p>
+      <p class="subtle">Achtung: CU8-Rohdaten und JSON-Metadaten können sicherheitsrelevante Schlüsselsignale oder Bitentscheidungen enthalten.
+      Downloads nur auf vertrauenswürdigen Geräten speichern. Das Dashboard nutzt im Heimnetz weiterhin unverschlüsseltes HTTP.</p>
+    </div>
     <p id="iq-status" class="subtle" role="status">Neue echte I/Q-Aufnahmen werden automatisch nachgeladen.</p>
     <div class="iq-trace-stats">
       <div><span>Signaldauer</span><strong id="iq-duration">–</strong></div>

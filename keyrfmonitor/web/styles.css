@@ -134,3 +134,10 @@
 .iq-sensitivity-review td,.iq-sensitivity-review th{font-variant-numeric:tabular-nums}
 .iq-sensitivity-nominal{background:rgba(225,154,55,.09)}
 .iq-sensitivity-candidate{background:rgba(33,159,143,.08)}
+
+/* v0.9.4: explicitly invoked original-file export, no recording or RF controls */
+.iq-downloads{margin:14px 0;padding:14px;border:1px solid #35536a;border-radius:12px}
+.iq-downloads h4{margin:0;font-size:14px}
+.iq-downloads p{margin:7px 0}
+.iq-download-buttons{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
+.iq-download-buttons button{max-width:100%}

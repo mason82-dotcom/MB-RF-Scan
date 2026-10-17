@@ -347,6 +347,7 @@ let iqDecodeRequestToken=0;
 let iqDecoded=null;
 let iqInventoryBusy=false;
 let iqLastInventoryIds='';
+let iqExportBusy=false;
 let iqPairBusy=false;
 let iqPairSignature='';
 let iqQualityBusy=false;
@@ -357,6 +358,63 @@ async function iqFetch(path){
  const result=await fetch(path,{cache:'no-store'});
  if(!result.ok)throw new Error('HTTP '+result.status);
  return await result.json();
+}
+/* Explicit user-initiated exports only; no scans or SDR device actions. */
+function iqUpdateExportButtons(){
+ const id=$('iq-choice').value;
+ const available=/^[0-9a-f]{32}$/.test(id) &&
+   iqCurrent!==null && iqCurrent.id===id && !iqExportBusy;
+ $('iq-export-cu8').disabled=!available;
+ $('iq-export-json').disabled=!available;
+}
+async function iqDownloadFile(kind){
+ const id=$('iq-choice').value;
+ if(iqExportBusy || !['cu8','json'].includes(kind) ||
+    !/^[0-9a-f]{32}$/.test(id) || !iqCurrent || iqCurrent.id!==id){
+   return;
+ }
+ iqExportBusy=true;
+ iqUpdateExportButtons();
+ const status=$('iq-export-status');
+ status.textContent='Lade '+kind.toUpperCase()+'-Archivdatei für '+id.slice(0,8)+' …';
+ try{
+  const url='/api/iq/download?id='+encodeURIComponent(id)+'&format='+kind;
+  const response=await fetch(url,{cache:'no-store'});
+  if(!response.ok){
+   let message='HTTP '+response.status;
+   try{
+    const error=await response.json();
+    if(typeof error.message==='string')message=error.message;
+   }catch{}
+   throw new Error(message);
+  }
+  const file=await response.blob();
+  // Server limits are more restrictive; this is a browser-side guard too.
+  const maximum=kind==='cu8'?2097152:1048576;
+  if(file.size===0 || file.size>maximum){
+   throw new Error('Unplausible Archivdateigröße');
+  }
+  const blobUrl=URL.createObjectURL(file);
+  try{
+   const link=document.createElement('a');
+   link.href=blobUrl;
+   link.download=id+'.'+kind;
+   link.style.display='none';
+   document.body.append(link);
+   link.click();
+   link.remove();
+  }finally{
+   // Delay URL revocation for mobile browsers completing the download.
+   setTimeout(()=>URL.revokeObjectURL(blobUrl),60000);
+  }
+  status.textContent='Download angefordert: '+id+'.'+kind+
+    ' ('+file.size.toLocaleString('de-DE')+' Bytes).';
+ }catch(error){
+  status.textContent='Download fehlgeschlagen: '+error.message;
+ }finally{
+  iqExportBusy=false;
+  iqUpdateExportButtons();
+ }
 }
 function iqEmptyCanvas(canvas,caption){
  const ctx=canvas.getContext('2d');
@@ -465,6 +523,8 @@ function renderIQBits(trace){
  const decoder=trace.decoder||{};
  const bits=decoder.bits||'';
  iqCurrent=trace;
+ iqUpdateExportButtons();
+ $('iq-export-status').textContent='Bereit: '+trace.id.slice(0,8)+' · Dateien werden unverändert aus dem Privatarchiv bereitgestellt.';
  $('iq-bits').textContent=bits?(bits.match(/.{1,8}/g)||[]).join(' '):'Keine Symbolentscheidungen ableitbar';
  $('iq-copy-bits').disabled=!bits.length;
  $('iq-bitcount').textContent=String(bits.length);
@@ -499,8 +559,10 @@ async function loadIQPage(){
 }
 async function selectIQTrace(){
  const id=$('iq-choice').value;
+ iqUpdateExportButtons();
  if(!id){
   iqCurrent=null;$('iq-copy-bits').disabled=true;
+  iqUpdateExportButtons();
   $('iq-status').textContent='Noch keine echte IQ-Aufnahme gespeichert.';
   return;
  }
@@ -540,6 +602,8 @@ async function refreshIQTraces(){
    $('iq-status').textContent='Neue IQ-/Bitaufnahmen erscheinen hier automatisch nach einem Scan.';
    $('iq-bits').textContent='–';
    iqCurrent=null;
+   iqUpdateExportButtons();
+   $('iq-export-status').textContent='Keine gespeicherte Aufnahme für den Download vorhanden.';
    return;
   }
   choice.disabled=false;
@@ -817,6 +881,8 @@ for(const id of ['iq-decode-baud','iq-decode-coding','iq-decode-polarity','iq-de
 }
 $('iq-run-decode').addEventListener('click',requestDecode);
 $('iq-choice').addEventListener('change',()=>selectIQTrace().catch(iqReportError));
+$('iq-export-cu8').addEventListener('click',()=>iqDownloadFile('cu8'));
+$('iq-export-json').addEventListener('click',()=>iqDownloadFile('json'));
 $('iq-refresh').addEventListener('click',()=>refreshIQTraces().catch(iqReportError));
 $('iq-pagesize').addEventListener('change',()=>{iqPageStart=0;loadIQPage().catch(iqReportError)});
 $('iq-offset').addEventListener('change',value=>{
