@@ -149,13 +149,7 @@
       <code id="iq-command">cd ~/Projekte/MB-RF-Scan &amp;&amp; /usr/bin/python3 -m keyrfmonitor scan --seconds 20 --iq</code>
       <button id="copy-iq" class="secondary" type="button">IQ-Scanbefehl kopieren</button>
     </div>
-    <div class="iq-access">
-      <label for="iq-secret">Privates IQ-Zugriffstoken (nur im Browser-Arbeitsspeicher)
-        <input id="iq-secret" type="password" autocomplete="off" spellcheck="false" placeholder="Token aus dem Pi-Terminal eingeben">
-      </label>
-      <button id="iq-unlock" class="primary" type="button">IQ-Ansicht freischalten</button>
-      <p class="subtle">Token abrufen mit <code>cat ~/.local/share/keyrfmonitor/iq-traces/iq-access.token</code>. Nicht hier im Chat weitergeben.</p>
-    </div>
+    <p class="subtle">IQ-Aufnahmen ohne zusätzliche Tokenabfrage im Heimnetz 192.168.178.0/24 anzeigen. Netzwerkzugriff über HTTP ist unverschlüsselt.</p>
     <div class="iq-controls">
       <label for="iq-choice">Gespeichertes Signal
         <select id="iq-choice" disabled><option value="">Keine IQ-Traces gespeichert</option></select>

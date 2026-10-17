@@ -343,11 +343,9 @@ let iqTraces=[];
 let iqCurrent=null;
 let iqPageStart=0;
 let iqRefreshToken=0;
-let iqAccessToken='';
 
-function iqAuthHeaders(){return {'X-IQ-Access-Token':iqAccessToken}}
 async function iqFetch(path){
- const result=await fetch(path,{headers:iqAuthHeaders(),cache:'no-store'});
+ const result=await fetch(path,{cache:'no-store'});
  if(!result.ok)throw new Error('HTTP '+result.status);
  return await result.json();
 }
@@ -450,10 +448,6 @@ async function selectIQTrace(){
  $('iq-status').textContent='Echter RTL-SDR-Burst vom '+fmtTime(result.trace.event_at)+' · nur lokal gespeichert';
 }
 async function refreshIQTraces(){
- if(!iqAccessToken){
-  $('iq-status').textContent='Bitte zuerst den IQ-Zugriff freischalten.';
-  return;
- }
  const data=await iqFetch('/api/iq/traces');
  iqTraces=data.traces;
  const choice=$('iq-choice'),previous=choice.value;
@@ -504,20 +498,4 @@ $('copy-iq').addEventListener('click',()=>{
   .then(()=>{$('iq-status').textContent='IQ-Scanbefehl kopiert.'})
   .catch(()=>{$('iq-status').textContent='Befehl manuell kopieren.'});
 });
-$('iq-unlock').addEventListener('click',async()=>{
- const candidate=$('iq-secret').value.trim();
- if(!candidate){
-  $('iq-status').textContent='Bitte erst das private Token aus dem Pi-Terminal eingeben.';
-  return;
- }
- iqAccessToken=candidate;
- try{
-  await refreshIQTraces();
-  $('iq-status').textContent='IQ-Zugriff freigeschaltet. '+iqTraces.length+' Aufnahmen vorhanden.';
-  $('iq-secret').value='';
- }catch(e){
-  iqAccessToken='';
-  $('iq-status').textContent='IQ-Zugriff verweigert oder nicht erreichbar: '+e.message;
- }
-});
-$('iq-status').textContent='IQ-Aufnahmen sind separat geschützt. Token aus dem Pi-Terminal eingeben.';
+refreshIQTraces().catch(iqReportError);

@@ -289,13 +289,16 @@ werden unter `~/.local/share/keyrfmonitor/iq-traces/` als private
 0600 in einem Verzeichnis mit 0700 gespeichert. Sie können sensible
 Funksignale enthalten: **nicht öffentlich hochladen oder teilen**.
 
-Die Browseransicht benötigt weiterhin einen lokalen SSH-Tunnel
-(`127.0.0.1:8890`), und ihre IQ-Endpunkte erfordern ein **separates privates IQ-Zugriffstoken**,
-das nicht vom Webserver ausgeliefert wird. Auf dem Pi lässt es sich mit
-`cat ~/.local/share/keyrfmonitor/iq-traces/iq-access.token` auslesen. Dieses
-Token nur in das Passwortfeld der lokal geöffneten IQ-Ansicht eingeben,
-nicht in Logs, Chats oder öffentliche Dokumente kopieren. Der Browser behält
-das Token ausschließlich im Arbeitsspeicher und entfernt es aus dem Eingabefeld. Der Benutzer kann sämtliche Samples einer
+Die Browseransicht ist ohne zusätzliche Tokenabfrage im ausdrücklich
+freigegebenen Heimnetz `192.168.178.0/24` über
+`http://192.168.178.63:8890` verfügbar. Der Server ist ausschließlich
+an `127.0.0.1` und, nach bewusster Freischaltung, an
+`192.168.178.63` gebunden. Anfragen anderer Quellnetze und mit
+unerwarteten Host-Headern werden abgewiesen. Der Zugriff ist
+**HTTP ohne TLS oder Benutzeranmeldung**; daher keine Portweiterleitung
+ins Internet konfigurieren und das Heimnetz nur mit vertrauenswürdigen
+Geräten nutzen. Schreibende Webaktionen bleiben durch das bestehende
+CSRF-Sitzungstoken geschützt. Der Benutzer kann sämtliche Samples einer
 Aufnahme seitenweise (512/2048/8192 Samples) im I/Q-Amplitudenplot,
 Konstellationsdiagramm und FFT-Spektrum ansehen. Zusätzlich wird pro
 erkanntem Burst eine auf 2.000 Baud basierende FSK-**Bithypothese**
@@ -313,3 +316,18 @@ gezählt. Bereits vorhandene Aufnahmen bleiben verfügbar.
 
 Keine Funkübertragung, keine Replay-Funktion und keine Fernbedienung
 der privilegierten ADS-B-Umschaltung aus dem Browser.
+
+### Zugriff auf dem Raspberry Pi 5 für das Heimnetz aktivieren
+
+Einmalig auf dem Pi: `bash scripts/pi/enable-lan-dashboard.sh`.
+Das Skript prüft die lokale IP `192.168.178.63` und aktives ADS-B,
+legt eine systemd-Benutzer-Drop-in-Datei an und startet nur den
+Webdashboard-Dienst neu. Die Listener bleiben auf den exakten
+IP-Adressen `127.0.0.1:8890` und `192.168.178.63:8890`.
+Der GitHub-Pi-Synchronisierungstimer kann weiterhin über Loopback
+`/api/status` prüfen. Bei einem fehlerhaften Start wird die
+Drop-in-Konfiguration automatisch zurückgesetzt. **Keine Portfreigabe am
+Router einrichten.** Ein früher eventuell angelegtes
+`iq-access.token` wird nicht mehr benötigt; es wird jedoch nicht
+automatisch gelöscht, damit bestehende private Dateien nicht
+ungefragt verändert werden.

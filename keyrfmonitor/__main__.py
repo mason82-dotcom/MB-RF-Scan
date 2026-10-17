@@ -42,6 +42,8 @@ def main(argv=None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     api = sub.add_parser("serve", help="Lokales Dashboard auf 127.0.0.1")
     api.add_argument("--host", default="127.0.0.1")
+    api.add_argument("--lan-host", choices=["192.168.178.63"], default=None,
+                     help="Zusätzlicher Listener, nur auf Pi-LAN-IP 192.168.178.63")
     api.add_argument("--port", type=int, default=8765)
     api.add_argument("--database", default=None)
     scan = sub.add_parser("scan", help="ADS-B befristet pausieren, Metadaten scannen, automatisch wiederherstellen")
@@ -86,7 +88,7 @@ def main(argv=None) -> int:
             print(f"Scan fehlgeschlagen: {exc}", file=sys.stderr)
             return 2
     if args.cmd == "serve":
-        serve(args.host, args.port, args.database)
+        serve(args.host, args.port, args.database, lan_host=args.lan_host)
         return 0
     return analyze(args.file, RFConfig())
 
