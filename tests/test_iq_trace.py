@@ -141,6 +141,40 @@ class TraceArchiveTests(unittest.TestCase):
         self.assertGreater(trace["sample_count"],
                            trace["active_to_sample"] - trace["active_from_sample"])
 
+
+    def test_actual_passive_detector_events_create_real_cu8_trace(self):
+        """Detector and recorder consume the same real-frame-shaped data stream."""
+        from keyrfmonitor.dsp import PassiveDetector
+        cfg = self.cfg
+        detector = PassiveDetector(cfg, started_at=0)
+        collector = TraceCollector(self.archive, cfg)
+        rng = np.random.default_rng(2026)
+        n = cfg.samples_per_frame
+        for index in range(280):
+            t = (index * n + np.arange(n)) / cfg.sample_rate
+            active = (t >= 1.8) & (t < 1.975)
+            symbols = np.floor(t / .0005).astype(np.int64)
+            frequencies = np.where(np.isin(symbols % 7, (0, 1, 4)),
+                                   cfg.high_offset_hz, cfg.low_offset_hz)
+            wave = 45 * active * np.exp(
+                1j * (2 * np.pi * np.cumsum(frequencies) / cfg.sample_rate))
+            iq = np.empty((n, 2), dtype=np.uint8)
+            iq[:, 0] = np.clip(127.5 + wave.real + rng.normal(0, 1.5, n),
+                               0, 255).astype(np.uint8)
+            iq[:, 1] = np.clip(127.5 + wave.imag + rng.normal(0, 1.5, n),
+                               0, 255).astype(np.uint8)
+            raw = iq.tobytes()
+            events = detector.process(raw)
+            collector.record_frame(detector.frame_index - 1, raw, events)
+        self.assertEqual(detector.status()["burst_count"], 1)
+        self.assertEqual(collector.saved, 1)
+        self.assertEqual(collector.skipped, 0)
+        found = self.archive.list_recent()[0]
+        record = self.archive.read(found["id"])
+        self.assertGreater(record["sample_count"], 170_000)
+        self.assertGreater(len(record["decoder"]["bits"]), 250)
+        self.assertFalse(record["security_protocol_verified"])
+
     def test_collector_skips_when_per_session_cap_is_reached(self):
         collector = TraceCollector(self.archive, self.cfg, max_captures=1)
         for index in range(30):
