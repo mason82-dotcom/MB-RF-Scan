@@ -55,6 +55,14 @@ class BrowserContractTests(unittest.TestCase):
         self.assertIn("threshold_sensitive_fragmentation", js)
         self.assertIn("iq-sensitivity-status",
                       (WEB / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("'/api/iq/download?id='", js)
+        self.assertIn("iqDownloadFile", js)
+        self.assertIn("iqUpdateExportButtons", js)
+        self.assertIn("URL.createObjectURL", js)
+        self.assertIn("iq-export-cu8", js)
+        self.assertIn("iq-export-json", js)
+        self.assertIn("iq-export-status",
+                      (WEB / "index.html").read_text(encoding="utf-8"))
         self.assertIn("iq-quality-pair", js)
         self.assertIn("iq-envelope-canvas", (WEB / "index.html").read_text(encoding="utf-8"))
         self.assertIn("scan --seconds 20", (WEB / "index.html").read_text(encoding="utf-8"))

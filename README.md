@@ -513,3 +513,45 @@ Keine Änderung am SDR-Aufnahmeverfahren, ADS-B-Watchdog,
 originalen CU8-/JSON-Dateien, LAN-Zugriffsgrenzen oder den
 bestehenden Endpunkten. Die Auswertung erfolgt ausschließlich
 aus vorhandenen Dateien und ohne jegliche HF-Aussendung.
+
+## v0.9.4 – Originale CU8- und JSON-Rohdaten herunterladen
+
+In der stets sichtbaren I/Q-Ansicht stehen nach Auswahl einer echten
+gespeicherten Burstaufnahme zwei **ausdrücklich anzuklickende**
+Downloads bereit:
+
+- **CU8-Rohdaten herunterladen:** Originaldatei `<trace-id>.cu8`
+  mit interleavten 8-Bit-RTL-SDR-I/Q-Samples, inklusive der beim
+  Speichern aufgezeichneten Vor- und Nachlaufabschnitte. Die Datei wird
+  nicht demoduliert, umgerechnet oder neu gespeichert.
+- **JSON-Metadaten herunterladen:** Originaldatei `<trace-id>.json`
+  mit Aufnahmedaten, Sample-Parametern, Burstgrenzen und den damals
+  unverifizierten FSK-Bitentscheidungen. Auch diese Datei wird
+  **bytegenau unverändert** exportiert.
+
+Der rein lesende Endpunkt lautet
+`GET /api/iq/download?id=<32-hex-zeichen>&format=cu8|json`.
+Er ist wie bisher nur von `127.0.0.1` bzw. dem freigegebenen
+Heimnetz `192.168.178.0/24` über die gebundenen Listener erreichbar.
+Er prüft exakt die erlaubten Parameter, Originalformat und Dateigrößen,
+verhindert Dateipfadtraversal und Symlink-Folgen sowie das Lesen von
+FIFO-/Sonderdateien. Maximal 1 s an CU8-Samples bzw. höchstens
+1 MiB Metadaten werden pro Datei angenommen; inkonsistente Archive
+werden abgelehnt. Die Antwort erzwingt einen Dateianhang
+(`Content-Disposition: attachment`) und `Cache-Control: no-store`.
+
+**Datenschutz:** Sowohl vollständige I/Q-Samples als auch originale
+JSON-Metadaten können Rückschlüsse auf Schlüsselsignale enthalten.
+Bewahre die Downloads nur auf eigenen, vertrauenswürdigen Geräten auf,
+teile sie nicht öffentlich und konfiguriere keine Router-Portfreigabe.
+Die bestehende LAN-Verbindung nutzt **unverschlüsseltes HTTP ohne
+zusätzliche Anmeldung**; ein Teilnehmer mit Zugriff auf das Heimnetz
+kann grundsätzlich ebenfalls vorhandene Daten abrufen. Es wird
+daher kein Schutz vor anderen Clients des Heimnetzes behauptet.
+
+Die neue Funktion ist kein kontinuierlicher Mitschnitt und zeichnet
+nichts neu auf. Sie liest ausschließlich bereits gespeicherte
+Privatarchivdateien und verändert weder deren Inhalt noch
+Dateiberechtigungen oder Aufnahmelimits. Kein Funkversand,
+kein Replay, kein automatischer SDR-Scan und kein Zugriff auf
+`dump1090.service` oder den ADS-B-Watchdog.

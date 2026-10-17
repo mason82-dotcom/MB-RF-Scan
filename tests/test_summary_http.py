@@ -428,6 +428,89 @@ class SummaryHTTPTests(unittest.TestCase):
         self.assertNotIn("decoder", json.dumps(sensitivity))
 
 
+    def test_iq_download_cu8_and_json_preserve_original_bytes_and_headers(self):
+        archive = TraceArchive(self.db.parent / "iq-traces")
+        cfg = RFConfig()
+        raw = b"\x70\x90" * (cfg.samples_per_frame * 3)
+        event = {
+            "kind": "burst", "at": datetime.now(timezone.utc).isoformat(),
+            "start_s": .001, "end_s": .019, "duration_ms": 18.0,
+            "peak_snr_db": 26.0, "peak_rise_db": 19.0,
+        }
+        item = archive.save(raw, event, cfg, 0)
+        identifier = item["id"]
+        files_before = {p.name: p.read_bytes() for p in archive.path.iterdir()}
+        base = self.base + "/api/iq/download?id=" + identifier + "&format="
+        for fmt, mimetype in (
+            ("cu8", "application/octet-stream"),
+            ("json", "application/json; charset=utf-8"),
+        ):
+            with self.subTest(fmt=fmt), urlopen(base + fmt, timeout=5) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers["Content-Type"], mimetype)
+                self.assertEqual(response.headers["Cache-Control"], "no-store")
+                self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
+                self.assertEqual(
+                    response.headers["Content-Disposition"],
+                    f'attachment; filename="{identifier}.{fmt}"',
+                )
+                original = files_before[identifier + "." + fmt]
+                self.assertEqual(int(response.headers["Content-Length"]), len(original))
+                self.assertEqual(response.read(), original)
+        self.assertEqual(raw, files_before[identifier + ".cu8"])
+        self.assertEqual(
+            {p.name: p.read_bytes() for p in archive.path.iterdir()},
+            files_before,
+        )
+
+    def test_iq_download_rejects_extra_duplicate_and_malformed_queries(self):
+        valid = "0" * 32
+        endpoint = self.base + "/api/iq/download?"
+        invalid = (
+            "id=" + valid + "&format=zip",
+            "id=" + valid + "&format=cu8&other=1",
+            "id=" + valid + "&format=cu8&format=json",
+            "id=" + valid + "&format=",
+            "id=" + valid,
+            "format=cu8",
+            "id=../../passwd&format=cu8",
+            "id=%2e%2e%2fprivate&format=json",
+            "id=" + "A" * 32 + "&format=json",
+            "id=" + valid + "&id=" + valid + "&format=cu8",
+        )
+        for query in invalid:
+            with self.subTest(query=query), self.assertRaises(HTTPError) as error:
+                urlopen(endpoint + query, timeout=3)
+            self.assertEqual(error.exception.code, 400)
+        for fmt in ("cu8", "json"):
+            with self.subTest(fmt=fmt), self.assertRaises(HTTPError) as missing:
+                urlopen(endpoint + "id=" + valid + "&format=" + fmt, timeout=3)
+            self.assertEqual(missing.exception.code, 404)
+        with self.assertRaises(HTTPError) as bad_host:
+            urlopen(Request(endpoint + "id=" + valid + "&format=json",
+                            headers={"Host": "evil.example"}), timeout=3)
+        self.assertEqual(bad_host.exception.code, 403)
+
+    def test_iq_download_corrupt_binary_is_rejected_but_metadata_is_recoverable(self):
+        archive = TraceArchive(self.db.parent / "iq-traces")
+        cfg = RFConfig()
+        raw = b"\x80\x80" * (cfg.samples_per_frame * 2)
+        event = {
+            "kind": "burst", "at": datetime.now(timezone.utc).isoformat(),
+            "start_s": 0, "end_s": .02, "duration_ms": 20.,
+            "peak_snr_db": 25., "peak_rise_db": 18.,
+        }
+        item = archive.save(raw, event, cfg, 0)
+        identity = item["id"]
+        (archive.path / (identity + ".cu8")).write_bytes(raw[:-2])
+        url = self.base + "/api/iq/download?id=" + identity + "&format="
+        with self.assertRaises(HTTPError) as broken:
+            urlopen(url + "cu8", timeout=4)
+        self.assertEqual(broken.exception.code, 409)
+        with urlopen(url + "json", timeout=4) as response:
+            self.assertEqual(json.loads(response.read())["id"], identity)
+
+
 
 if __name__ == "__main__":
     unittest.main()
