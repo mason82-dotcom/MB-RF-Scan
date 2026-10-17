@@ -1,5 +1,14 @@
 # Änderungsprotokoll
 
+## v0.9.2 – Gespeicherte CU8-Hüllkurven statt Bitcode-Raten
+
+- Read-only Analyse zweier gespeicherter I/Q-Bursts mit 1-ms-RMS-Energieraster und Rauschreferenz aus dem aufgenommenen Vor-/Nachlauf.
+- Schätzt Signalbeginn, Ende und aktive Dauer; vergleicht diese vorsichtig mit den 10-ms-Detektorgrenzen, besonders bei 180-/190-ms-Abweichungen.
+- Meldet unzureichende Referenz, geringe Kontraste, abgeschnittene Ränder und unterbrochene Signale als Unsicherheit.
+- Dashboard mit überlagerten Leistungshüllkurven beider Bursts und paarweise auswählbarer Qualitätsbewertung.
+- Neue LAN-begrenzte GET-API `/api/iq/pair-quality?pair=N` ohne Rohdaten, Bits, Replay, automatischen SDR-Start oder ADS-B-Eingriffe; Daten unverändert.
+
+
 ## v0.9.1 – Zeitliche Gruppierung archivierter I/Q-Bursts
 
 - Chronologische, schreibgeschützte Gruppierung der letzten höchstens 48 gespeicherten Burst-Metadaten zu disjunkten Paaren bei 400–650 ms Startabstand, Referenz 513 ms.

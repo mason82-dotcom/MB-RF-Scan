@@ -321,6 +321,67 @@ class SummaryHTTPTests(unittest.TestCase):
         self.assertIsNone(payload["duration_median_ms"])
 
 
+    def test_iq_pair_envelope_endpoint_is_read_only_and_explains_outlier(self):
+        from datetime import timedelta
+        archive = TraceArchive(self.db.parent / "iq-traces")
+        config = RFConfig()
+        one_ms = config.sample_rate // 1000
+        # Two archived 180-ms active windows, the second was labelled
+        # 190 ms by a coarse detector. No actual RF hardware is touched.
+        raw = (b"\x80\x80" * (one_ms * 20)
+               + b"\xd0\x80" * (one_ms * 180)
+               + b"\x80\x80" * (one_ms * 30))
+        origin = datetime.now(timezone.utc)
+        for index, duration in enumerate((180, 190)):
+            event = {
+                "kind": "burst",
+                "at": (origin + timedelta(milliseconds=index * 510)).isoformat(),
+                "start_s": 0.02, "end_s": .02 + duration / 1000,
+                "duration_ms": duration, "peak_snr_db": 36 + index,
+                "peak_rise_db": 25.0,
+            }
+            self.assertIsNotNone(archive.save(raw, event, config, 0))
+        files_before = {
+            p.name: p.read_bytes() for p in archive.path.iterdir()
+        }
+        with urlopen(self.base + "/api/iq/pair-quality?pair=1", timeout=10) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
+            data = json.load(response)
+        self.assertEqual(data["pair_index"], 1)
+        self.assertEqual(data["start_gap_ms"], 510.0)
+        self.assertEqual(data["comparison"]["detector_duration_difference_ms"], 10.0)
+        self.assertEqual(data["comparison"]["estimated_active_difference_ms"], 0.0)
+        self.assertEqual(
+            data["comparison"]["assessment"],
+            "compatible_with_detector_boundary_difference")
+        self.assertEqual(data["second"]["estimated_end_offset_ms"], -10.0)
+        self.assertEqual(len(data["first"]["profile"]), 230)
+        self.assertTrue(data["read_only"])
+        self.assertFalse(data["contains_raw_iq_or_key_bits"])
+        self.assertEqual(
+            {p.name: p.read_bytes() for p in archive.path.iterdir()},
+            files_before,
+        )
+        serialized = json.dumps(data)
+        for sensitive in ("raw_symbols", "hex_preview", "key_code",
+                          "bit_confidence", "decoder", "iq_format"):
+            self.assertNotIn(sensitive, serialized)
+
+    def test_iq_pair_quality_rejects_invalid_indices(self):
+        for query in (
+            "pair=0", "pair=25", "pair=-1", "pair=foo",
+            "pair=1&pair=2", "pair=1&other=1", "foo=1",
+            "pair=", "",
+        ):
+            with self.subTest(query=query), self.assertRaises(HTTPError) as error:
+                urlopen(self.base + "/api/iq/pair-quality?" + query, timeout=4)
+            self.assertEqual(error.exception.code, 400)
+        with self.assertRaises(HTTPError) as empty:
+            urlopen(self.base + "/api/iq/pair-quality?pair=1", timeout=4)
+        self.assertEqual(empty.exception.code, 404)
+
+
 
 if __name__ == "__main__":
     unittest.main()

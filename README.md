@@ -435,3 +435,46 @@ pausiert niemals ADS-B, nutzt ausschließlich die vorhandene
 LAN-Begrenzung auf `192.168.178.0/24` und den Loopback-Zugang
 und erfordert keine zusätzliche Tokenabfrage. Die Daten werden
 weiterhin unverschlüsselt über HTTP im Heimnetz übertragen.
+
+## v0.9.2 – 1-ms-Signalhüllkurve und Burstgrenzenvergleich
+
+Das Dashboard zeigt unter der bereits vorhandenen **zeitlichen
+Burst-Paaranalyse** jetzt die **I/Q-Hüllkurve** der beiden
+aufgezeichneten Bursts eines auswählbaren Paares. Die Messung
+benötigt keine weiteren Tastendrücke und keinen freien RTL-SDR:
+sie liest nur vorhandene private `.cu8`-Dateien (maximal 1 Sekunde
+pro Datei). Alle Aufnahmen und Metadaten bleiben unverändert.
+
+Die rein lesende API
+`GET /api/iq/pair-quality?pair=1` gibt für die beiden Burstfenster
+nur aggregierte I/Q-Leistung in **1-ms-Fenstern** relativ zur jeweiligen
+lokalen Rauschreferenz zurück. Der erste und der zweite Burst
+werden jeweils relativ zum bisher erkannten Beginn eingezeichnet.
+Zusätzlich werden ausgegeben:
+
+- Burstdauer des 10-ms-Detektors im Vergleich zur neu **geschätzten**
+  Dauer zusammenhängender Energieaktivität;
+- Vorlauf, Nachlauf, Rauschreferenz, Leistungskontrast und eventuelle
+  Abweichung der geschätzten Start-/Endflanken;
+- Ein ausdrücklich vorläufiger Hinweis, ob z. B. 180/190 ms eher mit
+  unterschiedlichen Detektorgrenzen oder mit einer tatsächlichen
+  Aktivitätsdifferenz vereinbar sind;
+- Begründete Unsicherheit bei schwachem Signal, unzureichendem
+  Vor-/Nachlauf, zu kurzen Aktivitätsinseln oder einem abgeschnittenen
+  Signal am Anfang/Ende des gespeicherten Fensters.
+
+**Eine Rasterauflösung von 1 ms ist keine garantierte Genauigkeit.**
+Die Amplitude liefert keine Datenrahmen- oder Symbolgrenzen und
+beweist insbesondere keine zusätzlichen 20 Datenbits im längeren
+Burst. Der Qualitätsbericht enthält **keine Roh-I/Q-Samples, Bits,
+Hexdaten oder Schlüsselcodes**. Die Wahl des zeitlichen Paares
+bleibt ein heuristisches Ergebnis aus den Zeitstempeln; eine
+Fahrzeugaktion oder ein Rolling Code wird nicht zugewiesen.
+
+Maximal zwei konkurrierende aufwendige Auswertungen sind gleichzeitig
+zulässig. Der neue Endpunkt ist GET-only und nutzt dieselbe
+IP-gebundene Dashboard-Sicherheitsgrenze (Loopback plus Pi-IP
+`192.168.178.63`). Keine weitere Authentifizierung oder TLS;
+daher nur im vertrauenswürdigen Heimnetz verwenden. Der
+20–300-s-CLI-Scan, der ADS-B-Watchdog, die Archivgrenzen und
+alle bestehenden Aufnahmen bleiben unverändert.

@@ -47,6 +47,11 @@ class BrowserContractTests(unittest.TestCase):
         self.assertIn("selectIQTrace().catch(iqReportError)", js)
         self.assertIn("iq-pair-trace-count",
                       (WEB / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("'/api/iq/pair-quality?pair='", js)
+        self.assertIn("drawIQEnvelope", js)
+        self.assertIn("renderIQPairQuality", js)
+        self.assertIn("iq-quality-pair", js)
+        self.assertIn("iq-envelope-canvas", (WEB / "index.html").read_text(encoding="utf-8"))
         self.assertIn("scan --seconds 20", (WEB / "index.html").read_text(encoding="utf-8"))
         self.assertIn("IQ_REFRESH_INTERVAL_MS=4000", js)
         self.assertIn("refreshIQTraces().catch(iqReportError);", js)
