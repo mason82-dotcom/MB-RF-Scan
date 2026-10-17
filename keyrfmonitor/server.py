@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import secrets
+from urllib.parse import parse_qs, urlsplit
 
 from .lab import LabStore, virtual_replay
 from .hardware.cc1101_sim import CC1101Simulator
@@ -59,6 +60,16 @@ def serve(host: str = "127.0.0.1", port: int = 8765, db_path: str | None = None)
                 self._json(monitor.status())
             elif self.path == "/api/events":
                 self._json({"events": store.recent()})
+            elif urlsplit(self.path).path == "/api/summary":
+                try:
+                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True,
+                                     strict_parsing=True)
+                    if set(query) - {"hours"} or len(query.get("hours", [])) > 1:
+                        raise ValueError("invalid query")
+                    hours = int(query["hours"][0]) if "hours" in query else 24
+                    self._json(store.summary(hours=hours))
+                except (ValueError, OverflowError):
+                    self._json({"message": "Zeitfenster: 6, 24 oder 168 Stunden."}, 400)
             elif self.path == "/api/sources":
                 self._json({"sources": available_sources()})
             elif self.path == "/api/cc1101/status":

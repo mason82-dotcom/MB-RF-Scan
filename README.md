@@ -217,3 +217,7 @@ bash scripts/pi/install-sync-timer.sh
 ```
 
 Anleitung, Prüfung, Rollback und Deaktivierung: [docs/PI_SYNC.md](docs/PI_SYNC.md). Der Abgleich führt keine SDR-Messungen oder ADS-B-Unterbrechungen aus und pusht keine Messdaten nach GitHub.
+
+## v0.4.0: Echtzeitdiagnose und Verlauf
+
+Die Weboberfläche zeigt einen Pegeltrend aus den Statusmetadaten des aktiven Web-Empfängers sowie einen Verlauf der realen RTL-SDR-Ereignisse über 6, 24 oder 168 Stunden. Der Endpunkt `GET /api/summary?hours=24` liefert aggregierte SQLite-Metadaten (keine IQ-Daten, Schlüsselbits oder Senderbefehle). Simulierte CC1101-Ereignisse werden in der Ereignistabelle gekennzeichnet, jedoch nicht in der Statistik mitgezählt. Bei zeitlich begrenzten Konsolenscans bleibt der Livepegel des Web-Monitors inaktiv; die gespeicherten Burst-Ereignisse aktualisieren den Verlauf. Die HTML-Oberfläche stoppt ADS-B nicht und führt kein sudo aus.

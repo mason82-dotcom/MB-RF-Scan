@@ -1,5 +1,13 @@
 # Änderungsprotokoll
 
+## 0.4.0 – Live-Diagnose und Verlauf (2026-10-17)
+
+- Schreibgeschützte Statistik-API `/api/summary?hours=6|24|168` mit UTC-Stundenwerten, Burst-/Paarzählern, durchschnittlicher Dauer und SNR.
+- Nur reale RTL-SDR-Ereignisse fließen in die Statistik ein; synthetische CC1101-Simulationen werden ausgeschlossen.
+- Neue Verlaufsgrafik mit Zeitraumauswahl und Live-Pegeltrend aus Statusmetadaten; verbesserte Kennzahlen und Quellkennzeichnung.
+- Konsolen-Scanbefehl nutzt `~/Projekte/MB-RF-Scan`; weiterhin keine privilegierte Browsersteuerung und keine IQ-/Schlüsselcode-Erfassung.
+
+
 ## 0.3.0 – Befristeter ADS-B-Scanmodus (2026-10-17)
 
 - Neuer Operator-Befehl `keyrfmonitor scan --seconds 60` (20–300 Sekunden).
