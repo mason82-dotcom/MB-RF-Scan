@@ -197,6 +197,26 @@
           <canvas id="iq-envelope-canvas" width="900" height="250" role="img"
                   aria-label="Hüllkurven beider Burstaufnahmen, relativ zum jeweiligen erkannten Start"></canvas>
         </div>
+        <div class="iq-sensitivity-review">
+          <h6>Schwellenwert-Sensitivität beider Bursts</h6>
+          <p id="iq-sensitivity-status" class="subtle" role="status">Noch keine Schwellenwerte analysiert.</p>
+          <div class="table-scroll">
+            <table>
+              <thead><tr>
+                <th>Schwelle über Rauschen</th>
+                <th>Abschnitte 1 / 2</th>
+                <th>Längster Abschnitt 1 / 2</th>
+                <th>Größte Lücke 1 / 2</th>
+              </tr></thead>
+              <tbody id="iq-sensitivity-body">
+                <tr><td colspan="4" class="empty">Keine Leistungsprofile verfügbar</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="subtle">Die Werte bei 6,0 bis 9,0 dB sind zusätzliche Vergleichshypothesen.
+          Die ursprüngliche Detektorentscheidung und die I/Q-Aufnahmen bleiben unverändert.
+          Eine zusammenhängende Energiehüllkurve beweist keine ununterbrochene Modulation oder Telegrammgültigkeit.</p>
+        </div>
         <p id="iq-quality-conclusion" class="subtle" role="status">Noch keine Aussage möglich.</p>
         <p class="subtle">Die Signalflanken werden aus gespeicherten 8-Bit-I/Q-Samples geschätzt.
         1 ms ist nur die Rasterauflösung, keine garantierte Messgenauigkeit.
