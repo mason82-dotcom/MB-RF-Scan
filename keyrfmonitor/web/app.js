@@ -347,6 +347,8 @@ let iqDecodeRequestToken=0;
 let iqDecoded=null;
 let iqInventoryBusy=false;
 let iqLastInventoryIds='';
+let iqPairBusy=false;
+let iqPairSignature='';
 const IQ_REFRESH_INTERVAL_MS=4000;
 
 async function iqFetch(path){
@@ -557,6 +559,75 @@ async function refreshIQTraces(){
   iqInventoryBusy=false;
  }
 }
+/* v0.9.1: timing-only pairing of *existing* real I/Q burst metadata. */
+async function refreshIQPairs(){
+ if(iqPairBusy)return;
+ iqPairBusy=true;
+ try{
+  const data=await iqFetch('/api/iq/pairs');
+  const signature=data.pairs.map(p=>p.first.id+':'+p.second.id).join(',')+
+    '|'+data.unpaired.map(t=>t.id).join(',');
+  if(signature===iqPairSignature && data.trace_count===Number($('iq-pair-trace-count').textContent))return;
+  iqPairSignature=signature;
+  $('iq-pair-trace-count').textContent=String(data.trace_count);
+  $('iq-pair-count').textContent=String(data.pair_count);
+  $('iq-unpaired-count').textContent=String(data.unpaired_count);
+  $('iq-duration-median').textContent=
+    data.duration_median_ms===null?'–':data.duration_median_ms.toFixed(1)+' ms';
+  const tbody=$('iq-pair-body');
+  tbody.replaceChildren();
+  if(!data.pairs.length){
+   const tr=document.createElement('tr'),td=document.createElement('td');
+   td.colSpan=7;td.className='empty';
+   td.textContent='Keine zeitlich plausiblen Burst-Paare in den archivierten Aufnahmen.';
+   tr.append(td);tbody.append(tr);
+  }else{
+   for(const pair of data.pairs){
+    const tr=document.createElement('tr');
+    const duration=pair.first.duration_ms.toFixed(0)+' / '+
+      pair.second.duration_ms.toFixed(0)+' ms';
+    const snr=pair.first.peak_snr_db.toFixed(1)+' / '+
+      pair.second.peak_snr_db.toFixed(1)+' dB';
+    for(const value of [
+      '#'+pair.index,fmtTime(pair.first.event_at),
+      pair.start_gap_ms.toFixed(1)+' ms',
+      pair.quiet_gap_ms.toFixed(1)+' ms',duration,snr
+    ]){
+      const td=document.createElement('td');td.textContent=value;tr.append(td);
+    }
+    const links=document.createElement('td');
+    for(const [label,id] of [['1',pair.first.id],['2',pair.second.id]]){
+      const button=document.createElement('button');
+      button.type='button';button.className='secondary iq-pair-open';
+      button.textContent=label;
+      button.title='Empfangenen Burst '+label+' in der I/Q-Ansicht öffnen';
+      button.addEventListener('click',()=>{
+        const choice=$('iq-choice');
+        const exists=Array.from(choice.options).some(option=>option.value===id);
+        if(!exists){$('iq-pairs-status').textContent='Aufnahme ist nicht mehr in der neuesten Auswahl.';return;}
+        choice.value=id;
+        selectIQTrace().catch(iqReportError);
+      });
+      links.append(button);
+    }
+    tr.append(links);tbody.append(tr);
+   }
+  }
+  $('iq-unpaired-status').textContent=data.unpaired_count
+    ?data.unpaired_count+' Aufnahme(n) liegen außerhalb der Paarregel oder sind zeitlich mehrdeutig.'
+    :'Keine ungepaarten Aufnahmen innerhalb der aktuell betrachteten Auswahl.';
+  $('iq-pairs-status').textContent='Chronologische Gruppierung aus gespeicherten Burst-Zeitstempeln. '
+    +data.pair_count+' mögliche Doppelaussendung(en), '
+    +data.trace_count+' Aufnahmen; keine Tasten- oder Protokollverifikation.'
+    +(data.ignored_invalid_or_duplicate
+      ?' '+data.ignored_invalid_or_duplicate+' fehlerhafte/duplizierte Einträge ignoriert.':'');
+ }finally{
+  iqPairBusy=false;
+ }
+}
+function iqPairError(err){
+ $('iq-pairs-status').textContent='Burst-Paaranalyse nicht erreichbar: '+err.message;
+}
 function iqReportError(err){$('iq-status').textContent='IQ-Diagnose nicht erreichbar: '+err.message}
 function requestDecode(){
  refreshDecode().catch(e=>{
@@ -593,4 +664,8 @@ $('copy-iq').addEventListener('click',()=>{
   .catch(()=>{$('iq-status').textContent='Befehl manuell kopieren.'});
 });
 refreshIQTraces().catch(iqReportError);
-setInterval(()=>refreshIQTraces().catch(iqReportError),IQ_REFRESH_INTERVAL_MS);
+refreshIQPairs().catch(iqPairError);
+setInterval(()=>{
+ refreshIQTraces().catch(iqReportError);
+ refreshIQPairs().catch(iqPairError);
+},IQ_REFRESH_INTERVAL_MS);

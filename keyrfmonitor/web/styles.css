@@ -102,3 +102,14 @@
 .iq-analysis-metrics strong{font-size:13px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .iq-keybits h5{font-size:12px;margin:14px 0 8px}
 @media(max-width:700px){.iq-analysis-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Read-only archived RF-burst timing pairs. No device controls. */
+.iq-pair-review{margin:18px 0;padding:16px;border:1px solid #30475c;border-radius:12px}
+.iq-pair-review h4{font-size:14px;margin:0}
+.iq-pair-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0}
+.iq-pair-summary>div{border-left:2px solid #426d80;padding-left:11px;display:flex;flex-direction:column;gap:3px}
+.iq-pair-summary span{font-size:11px;color:var(--muted)}
+.iq-pair-summary strong{font-size:17px;font-variant-numeric:tabular-nums}
+.iq-pair-review .table-scroll{margin:10px 0}
+.iq-pair-open{font-size:12px;min-width:32px;margin-right:5px;padding:5px 8px}
+@media(max-width:700px){.iq-pair-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
