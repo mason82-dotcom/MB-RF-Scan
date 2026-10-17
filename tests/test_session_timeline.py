@@ -117,6 +117,35 @@ class TimelineTests(unittest.TestCase):
         self.assertEqual(result["included_bursts"], 1)
         self.assertEqual(result["snr_distribution"][1]["count"], 1)
 
+    def test_dense_session_is_limited_and_flagged(self):
+        session = self.store.start_session(20)
+        started = datetime.fromisoformat(self.store.recent_sessions()[0]["started_at"])
+        at = (started + timedelta(seconds=1)).isoformat()
+        with self.store.lock:
+            self.store.db.executemany(
+                "INSERT INTO events(kind,at,duration_ms,peak_snr_db) VALUES (?,?,?,?)",
+                [("burst", at, 180, 25)] * 10001)
+            self.store.db.execute(
+                "INSERT INTO scan_session_events(session_id,event_id) "
+                "SELECT ?,id FROM events", (session,))
+            self.store.db.commit()
+        result = self.store.session_timeline(session)
+        self.assertTrue(result["truncated"])
+        self.assertEqual(result["included_bursts"], 10000)
+        self.assertEqual(len(result["buckets"]), 4)
+
+    def test_stale_session_is_bounded_to_360_seconds(self):
+        session = self.store.start_session(20)
+        now = datetime.now(timezone.utc)
+        with self.store.lock:
+            self.store.db.execute(
+                "UPDATE scan_sessions SET finished_at=? WHERE id=?",
+                ((now + timedelta(days=2)).isoformat(), session))
+            self.store.db.commit()
+        result = self.store.session_timeline(session)
+        self.assertEqual(result["window_seconds"], 360)
+        self.assertEqual(len(result["buckets"]), 72)
+
     def test_invalid_input_and_missing_session(self):
         for sid in (0, -1, True, 1.0, "1", 2147483648):
             with self.assertRaises(ValueError):
