@@ -32,6 +32,12 @@ MAX_ARCHIVE_FILES = 128
 MIN_FREE_BYTES = 128 * 1024 * 1024
 MAX_PAGE_SAMPLES = 8192
 NOMINAL_BAUD = 2000
+MAX_EXPORT_METADATA_BYTES = 1024 * 1024  # Never trust stored JSON sizes
+
+
+class ArchiveExportError(Exception):
+    """An archived file is unsafe, corrupt, missing or inconsistent."""
+
 
 
 def demodulate_fsk(raw: bytes, config: RFConfig, active_start: int,
@@ -199,6 +205,72 @@ class TraceArchive:
         if data.get("id") != trace_id or data.get("source") != "rtl_sdr":
             raise ValueError("Trace metadata inconsistent")
         return data
+
+    @staticmethod
+    def _export_regular_file(path: Path, maximum_bytes: int) -> bytes:
+        """Open a bounded regular file without following symlinks or FIFOs."""
+        flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+                 | getattr(os, "O_NONBLOCK", 0))
+        try:
+            descriptor = os.open(path, flags)
+            with os.fdopen(descriptor, "rb") as stream:
+                details = os.fstat(stream.fileno())
+                if (not stat.S_ISREG(details.st_mode) or details.st_size <= 0
+                        or details.st_size > maximum_bytes):
+                    raise ArchiveExportError("Unsafe or oversized archive file")
+                content = stream.read(details.st_size + 1)
+                if len(content) != details.st_size:
+                    raise ArchiveExportError("Archive file changed during download")
+                return content
+        except OSError as exc:
+            raise ArchiveExportError("Archive file unavailable") from exc
+
+    def export_bytes(self, trace_id: str, file_format: str) -> bytes | None:
+        """Return original stored CU8 or JSON bytes with strict integrity checks.
+
+        This function NEVER writes, re-encodes, decodes signals, uses SDR,
+        controls ADS-B or changes existing permissions. The HTTP handler is
+        responsible for LAN checks and an attachment-only response.
+        """
+        trace_id = self._id(trace_id)
+        if file_format not in ("cu8", "json"):
+            raise ValueError("Unsupported IQ export format")
+        metadata_file = self.path / (trace_id + ".json")
+        try:
+            metadata_bytes = self._export_regular_file(
+                metadata_file, MAX_EXPORT_METADATA_BYTES)
+        except ArchiveExportError:
+            if not os.path.lexists(metadata_file):
+                return None
+            raise
+        try:
+            meta = json.loads(metadata_bytes.decode("utf-8"))
+            if (not isinstance(meta, dict)
+                    or meta.get("id") != trace_id
+                    or meta.get("source") != "rtl_sdr"
+                    or meta.get("iq_format") != "rtl_sdr_cu8_interleaved"
+                    or meta.get("bytes_saved") is not True):
+                raise ArchiveExportError("Inconsistent IQ export metadata")
+            sample_rate = meta.get("sample_rate")
+            sample_count = meta.get("sample_count")
+            if (type(sample_rate) is not int
+                    or sample_rate != RFConfig().sample_rate
+                    or type(sample_count) is not int
+                    or not 2 <= sample_count <= sample_rate
+                    or type(meta.get("iq_bytes")) is not int
+                    or meta["iq_bytes"] != sample_count * 2):
+                raise ArchiveExportError("Invalid IQ export file dimensions")
+        except (ValueError, UnicodeError, TypeError) as exc:
+            raise ArchiveExportError("Invalid IQ export metadata JSON") from exc
+        if file_format == "json":
+            # Byte-for-byte original private metadata, including original bit
+            # hypotheses; intentionally not a JSON dump / reconstruction.
+            return metadata_bytes
+        raw = self._export_regular_file(
+            self.path / (trace_id + ".cu8"), sample_rate * 2)
+        if len(raw) != sample_count * 2:
+            raise ArchiveExportError("CU8 file does not match IQ metadata")
+        return raw
 
     def list_recent(self, limit: int = 48) -> list[dict]:
         if type(limit) is not int or not 1 <= limit <= 100:
