@@ -76,6 +76,25 @@ class SummaryHTTPTests(unittest.TestCase):
                 with self.assertRaises(HTTPError) as raised:
                     urlopen(self.base + "/api/summary?" + query, timeout=3)
                 self.assertEqual(raised.exception.code, 400)
+ 
+    def test_session_readonly_endpoint(self):
+        store = EventStore(self.db)
+        session_id = store.start_session(30)
+        store.finish_session(session_id, result="completed", restoration="verified",
+                             burst_count=10, pair_count=5)
+        store.close()
+        with urlopen(self.base + "/api/sessions", timeout=3) as response:
+            data = json.load(response)
+            self.assertEqual(response.status, 200)
+        self.assertEqual(data["source"], "cli_scan")
+        self.assertEqual(len(data["sessions"]), 1)
+        session = data["sessions"][0]
+        self.assertEqual(session["id"], session_id)
+        self.assertEqual(session["result"], "completed")
+        self.assertEqual(session["restoration"], "verified")
+        self.assertEqual((session["burst_count"], session["pair_count"]), (10, 5))
+        self.assertNotIn("key_bits", session)
+        self.assertNotIn("iq_data", session)
 
 
 if __name__ == "__main__":
