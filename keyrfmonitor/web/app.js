@@ -343,6 +343,8 @@ let iqTraces=[];
 let iqCurrent=null;
 let iqPageStart=0;
 let iqRefreshToken=0;
+let iqDecodeRequestToken=0;
+let iqDecoded=null;
 let iqInventoryBusy=false;
 let iqLastInventoryIds='';
 const IQ_REFRESH_INTERVAL_MS=4000;
@@ -399,7 +401,63 @@ function drawIQ(page){
   iqLine(sctx,vals,spec.width,spec.height,'#8ccfdf',min-1,max+1);
  }
 }
+function renderDecodeResult(data){
+ iqDecoded=data;
+ const bits=data.bits||'';
+ $('iq-bits').textContent=bits?(bits.match(/.{1,8}/g)||[]).join(' '):'Keine plausiblen Bits.';
+ $('iq-hex').textContent=data.hex_preview||'Keine vollständigen, sicher zugeordneten Bytes.';
+ $('iq-copy-bits').disabled=!bits.length;
+ $('iq-bitcount').textContent=String(data.bit_count);
+ $('iq-baud').textContent=data.baud+' Bd';
+ $('iq-uncertain').textContent=data.uncertain_bits+'/'+data.bit_count+' ('+data.uncertain_percent+' %)';
+ $('iq-invalid-pairs').textContent=data.coding==='manchester'?String(data.invalid_manchester_pairs):'n/a (NRZ)';
+ $('iq-clock').textContent=data.timing_offset_samples+' Samples';
+ const low=Number.isFinite(data.estimated_low_hz)?data.estimated_low_hz.toFixed(0)+' Hz':'–';
+ const high=Number.isFinite(data.estimated_high_hz)?data.estimated_high_hz.toFixed(0)+' Hz':'–';
+ $('iq-frequencies').textContent=low+' / '+high;
+ $('iq-analysis-status').textContent=
+   data.coding.toUpperCase()+' · '+(data.polarity==='inverted'?'invertiert':'normal')
+   +' · '+(data.coding==='manchester'?'Manchester-Phase '+data.alignment+' · ':'')
+   +data.known_full_bytes+'/'+data.total_full_bytes+' vollständig bekannte Bytegruppen'
+   +' · mittlere Entscheidungsstärke '+data.confidence_mean.toFixed(2);
+ $('iq-decoder-status').textContent=
+   'Nicht verifiziert: nur phasendiskriminierte FSK-Symbole · Taktgrenzen, '
+   +'Rahmenanfang, Fehlerkorrektur und Protokoll unbekannt.';
+ const alternating=data.alternating_run;
+ $('iq-alternation').textContent=alternating
+   ? 'Alternierende Pegelfolge ab Bit '+alternating.start_bit+
+     ', Länge '+alternating.length_bits+
+     ' · mögliches Taktsignal, keine verifizierte Präambel.'
+   : 'Keine ausreichend lange alternierende Pegelfolge erkannt. Kein Rahmen verifiziert.';
+}
+async function refreshDecode(){
+ const id=iqCurrent?.id;
+ if(!id)return;
+ const baud=$('iq-decode-baud').value;
+ const coding=$('iq-decode-coding').value;
+ const polarity=$('iq-decode-polarity').value;
+ const alignment=coding==='manchester'?$('iq-decode-alignment').value:'0';
+ $('iq-decode-alignment').disabled=coding!=='manchester';
+ const stamp=++iqDecodeRequestToken;
+ $('iq-analysis-status').textContent='Berechne Bitinterpretation aus echter I/Q-Aufnahme …';
+ const query='/api/iq/decode?id='+encodeURIComponent(id)
+   +'&baud='+encodeURIComponent(baud)
+   +'&coding='+encodeURIComponent(coding)
+   +'&polarity='+encodeURIComponent(polarity)
+   +'&alignment='+encodeURIComponent(alignment);
+ const result=await iqFetch(query);
+ if(stamp!==iqDecodeRequestToken||!iqCurrent||iqCurrent.id!==id)return;
+ renderDecodeResult(result);
+}
 function renderIQBits(trace){
+ iqDecoded=null;
+ ++iqDecodeRequestToken;
+ $('iq-hex').textContent='–';
+ $('iq-uncertain').textContent='–';
+ $('iq-invalid-pairs').textContent='–';
+ $('iq-clock').textContent='–';
+ $('iq-frequencies').textContent='–';
+ $('iq-alternation').textContent='Keine Präambel oder Rahmenstruktur verifiziert.';
  const decoder=trace.decoder||{};
  const bits=decoder.bits||'';
  iqCurrent=trace;
@@ -447,7 +505,13 @@ async function selectIQTrace(){
  const result=await iqFetch(query);
  if($('iq-choice').value!==id)return;
  renderIQBits(result.trace);
- await loadIQPage();
+ await Promise.all([
+   loadIQPage(),
+   refreshDecode().catch(e=>{
+     if($('iq-choice').value===id)
+       $('iq-analysis-status').textContent='Dekodierung momentan nicht verfügbar: '+e.message;
+   }),
+ ]);
  $('iq-status').textContent='Echter RTL-SDR-Burst vom '+fmtTime(result.trace.event_at)+' · nur lokal gespeichert';
 }
 async function refreshIQTraces(){
@@ -494,6 +558,15 @@ async function refreshIQTraces(){
  }
 }
 function iqReportError(err){$('iq-status').textContent='IQ-Diagnose nicht erreichbar: '+err.message}
+function requestDecode(){
+ refreshDecode().catch(e=>{
+  $('iq-analysis-status').textContent='Dekodierung nicht verfügbar: '+e.message;
+ });
+}
+for(const id of ['iq-decode-baud','iq-decode-coding','iq-decode-polarity','iq-decode-alignment']){
+ $(id).addEventListener('change',requestDecode);
+}
+$('iq-run-decode').addEventListener('click',requestDecode);
 $('iq-choice').addEventListener('change',()=>selectIQTrace().catch(iqReportError));
 $('iq-refresh').addEventListener('click',()=>refreshIQTraces().catch(iqReportError));
 $('iq-pagesize').addEventListener('change',()=>{iqPageStart=0;loadIQPage().catch(iqReportError)});
@@ -510,7 +583,7 @@ $('iq-next').addEventListener('click',()=>{
 });
 $('iq-copy-bits').addEventListener('click',()=>{
  if(!iqCurrent)return;
- navigator.clipboard.writeText(iqCurrent.decoder.bits)
+ navigator.clipboard.writeText(iqDecoded?.bits||iqCurrent.decoder.bits)
   .then(()=>{$('iq-status').textContent='Unverifizierte FSK-Bitentscheidungen kopiert.'})
   .catch(()=>{$('iq-status').textContent='Kopieren nicht verfügbar.'});
 });
