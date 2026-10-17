@@ -139,14 +139,14 @@
       <span class="pill neutral">Explizite Diagnose · kein Replay</span>
     </div>
     <p class="info">
-      IQ-Aufnahmen werden ausschließlich mit <code>scan --iq</code> gespeichert.
+      IQ-Aufnahmen und FSK-Bitentscheidungen werden bei jedem bewusst gestarteten Scan standardmäßig mit gespeichert.
       Die Bithypothese stammt aus einem 2.000-Bd-FSK-Phasendiskriminator.
       Ein Fragezeichen markiert unsichere Symbole; Framing, Verschlüsselung und
       Telegrammgültigkeit werden nicht verifiziert.
       Der Scan wird nach 20–300 Sekunden beendet und ADS-B wiederhergestellt.
     </p>
     <div class="scan-command">
-      <code id="iq-command">cd ~/Projekte/MB-RF-Scan &amp;&amp; /usr/bin/python3 -m keyrfmonitor scan --seconds 20 --iq</code>
+      <code id="iq-command">cd ~/Projekte/MB-RF-Scan &amp;&amp; /usr/bin/python3 -m keyrfmonitor scan --seconds 20</code>
       <button id="copy-iq" class="secondary" type="button">IQ-Scanbefehl kopieren</button>
     </div>
     <p class="subtle">IQ-Aufnahmen ohne zusätzliche Tokenabfrage im Heimnetz 192.168.178.0/24 anzeigen. Netzwerkzugriff über HTTP ist unverschlüsselt.</p>
@@ -163,7 +163,7 @@
         </select>
       </label>
     </div>
-    <p id="iq-status" class="subtle" role="status">Noch keine I/Q-Daten geladen.</p>
+    <p id="iq-status" class="subtle" role="status">Neue echte I/Q-Aufnahmen werden automatisch nachgeladen.</p>
     <div class="iq-trace-stats">
       <div><span>Signaldauer</span><strong id="iq-duration">–</strong></div>
       <div><span>Samples</span><strong id="iq-total">–</strong></div>
@@ -190,12 +190,12 @@
       <pre id="iq-bits" class="iq-bits" aria-label="Empfangene FSK-Symbolhypothesen">–</pre>
       <p class="subtle">Dies sind nicht verifizierte 0/1/?, keine sicher dekodierten Schlüsselcodes. Ohne Symboltakt- und Protokollabgleich sind Bitgrenzen unsicher.</p>
     </div>
-    <p class="subtle">Die lokalen Dateien liegen nur auf dem Pi mit privaten Dateirechten im Ordner <code>~/.local/share/keyrfmonitor/iq-traces/</code>. Standardscans bleiben Metadaten-only; keine HF-Aussendung.</p>
+    <p class="subtle">Die lokalen Dateien liegen nur auf dem Pi mit privaten Dateirechten im Ordner <code>~/.local/share/keyrfmonitor/iq-traces/</code>. Bei normalen Scans werden I/Q-Burstfenster und Bithypothesen mit erfasst; <code>--no-iq</code> schaltet das ab. Keine HF-Aussendung.</p>
   </section>
   <section class="panel events"><div class="panel-head"><h3>Letzte Messereignisse</h3><span class="subtle">Nur Metadaten</span></div>
     <div class="table-scroll"><table><thead><tr><th>Zeit (lokal)</th><th>Quelle</th><th>Typ</th><th>Dauer / Abstand</th><th>Pegelanstieg</th><th>SNR</th></tr></thead><tbody id="event-body"><tr><td colspan="6" class="empty">Noch keine Ereignisse</td></tr></tbody></table></div>
   </section>
-  <footer>MB-RF-Scan 0.8.0 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
+  <footer>MB-RF-Scan 0.8.1 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
 </div>
 </body>
 </html>

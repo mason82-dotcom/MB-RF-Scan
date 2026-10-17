@@ -46,10 +46,13 @@ def main(argv=None) -> int:
                      help="Zusätzlicher Listener, nur auf Pi-LAN-IP 192.168.178.63")
     api.add_argument("--port", type=int, default=8765)
     api.add_argument("--database", default=None)
-    scan = sub.add_parser("scan", help="ADS-B befristet pausieren, Metadaten scannen, automatisch wiederherstellen")
+    scan = sub.add_parser("scan", help="ADS-B befristet pausieren, IQ-/Bitaufnahmen standardmäßig erfassen und ADS-B wiederherstellen")
     scan.add_argument("--seconds", type=int, default=60, help="Scan-Dauer, 20 bis 300 Sekunden (Standard 60)")
-    scan.add_argument("--iq", action="store_true",
-                      help="Explizit echte CU8-IQ-Bursts lokal speichern und FSK-Bithypothesen berechnen")
+    iq_choice = scan.add_mutually_exclusive_group()
+    iq_choice.add_argument("--iq", dest="iq", action="store_true", default=True,
+                           help="Echte CU8-I/Q- und FSK-Bitaufnahmen einschalten (Standard)")
+    iq_choice.add_argument("--no-iq", dest="iq", action="store_false",
+                           help="Nur Burst-Metadaten erfassen, keine IQ-/Bitdateien")
     offline = sub.add_parser("analyze", help="Lokale RTL-SDR CU8-Datei analysieren")
     offline.add_argument("file", type=Path)
     cc = sub.add_parser("cc1101", help="CC1101-Pinbelegung und nicht sendende SPI-Pruefung")

@@ -1,5 +1,14 @@
 # Änderungsprotokoll
 
+## v0.8.1 – Echte I/Q- und Bitansichten sofort bei regulären Scans
+
+- Explizit gestartete Terminalscans speichern standardmäßig echte CU8-I/Q-Bursts samt unsicheren FSK-Bitentscheidungen; `--iq` ist kompatibel, `--no-iq` deaktiviert die Aufnahme.
+- Bei bewusst gestarteten Browser-Messungen werden auch I/Q-Burstfenster erfasst, ohne ADS-B automatisch anzuhalten.
+- Dashboard aktualisiert die I/Q-Aufnahmeliste automatisch und zeigt neue Bursts sofort, ohne manuelle Aktualisierung oder erneute Auswahl; Navigationsposition bleibt bei unverändertem Bestand erhalten.
+- Bereits vorhandene Sitzungen und Datenbank bleiben unverändert; die 20–300-s-CLI-Watchdoggrenzen sowie Archiv- und Speichergrenzen bleiben bestehen.
+- LAN-Zugriff weiterhin nur über `192.168.178.63` und Loopback, keine zusätzliche IQ-Tokenabfrage, keine HF-Aussendung oder Replay-Funktion.
+
+
 ## 0.8.0 LAN-Zugriff ohne IQ-Token (192.168.178.63)
 
 - Nach ausdrücklicher Freischaltung zwei IP-gebundene Weblistener `127.0.0.1:8890` und `192.168.178.63:8890`; niemals `0.0.0.0`.

@@ -274,6 +274,13 @@ class TraceCollector:
         self.skipped = 0
         self.archive_full = False
 
+    def reset_scan(self) -> None:
+        """Reset per-scan quota and ring without deleting stored captures."""
+        self.frames.clear()
+        self.saved = 0
+        self.skipped = 0
+        self.archive_full = False
+
     def record_frame(self, index: int, raw: bytes, events: list[dict]) -> None:
         if len(raw) != self.config.samples_per_frame * 2:
             raise ValueError("Wrong CU8 frame size")
