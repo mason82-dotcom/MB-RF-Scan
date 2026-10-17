@@ -12,12 +12,15 @@ import time
 
 from .dsp import PassiveDetector, RFConfig
 from .storage import EventStore
+from .iq_trace import TraceCollector
 
 
 class Monitor:
-    def __init__(self, store: EventStore, config: RFConfig | None = None):
+    def __init__(self, store: EventStore, config: RFConfig | None = None,
+                 trace: TraceCollector | None = None):
         self.store = store
         self.config = config or RFConfig()
+        self.trace = trace
         self.lock = threading.RLock()
         self.process: subprocess.Popen | None = None
         self.thread: threading.Thread | None = None
@@ -126,7 +129,10 @@ class Monitor:
                     remaining -= len(buf)
                 if remaining:
                     break
-                detector.process(b"".join(parts))
+                chunk = b"".join(parts)
+                events = detector.process(chunk)
+                if self.trace is not None:
+                    self.trace.record_frame(detector.frame_index - 1, chunk, events)
                 with self.lock:
                     if self.state == "starting" and detector.status()["baseline_ready"]:
                         self.state = "running"
@@ -186,7 +192,11 @@ class Monitor:
                    "error": self.last_error, "stderr": list(self.stderr_tail)[-4:],
                    "frequency_hz": self.config.center_hz,
                    "gain_db": self.config.gain_db,
-                   "iq_saved": False, "key_codes_saved": False,
+                   "iq_saved": bool(self.trace and self.trace.saved),
+                   "key_codes_saved": False,
+                   "iq_trace_enabled": self.trace is not None,
+                   "iq_trace_saved": self.trace.saved if self.trace else 0,
+                   "iq_trace_skipped": self.trace.skipped if self.trace else 0,
                    "external_scan_active": self._device_in_use_elsewhere()}
             if self.detector is not None:
                 obj.update(self.detector.status())

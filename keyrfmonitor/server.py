@@ -12,6 +12,7 @@ from .hardware.cc1101_sim import CC1101Simulator
 from .hardware.sources import available_sources
 from .receiver import Monitor
 from .storage import EventStore
+from .iq_trace import TraceArchive
 
 WEB = Path(__file__).resolve().parent / "web"
 
@@ -25,6 +26,7 @@ def serve(host: str = "127.0.0.1", port: int = 8765, db_path: str | None = None)
     lab = LabStore(Path(db_path).parent / "synthetic_lab.sqlite3")
     simulator = CC1101Simulator(store.insert)
     csrf = secrets.token_urlsafe(32)
+    trace_archive = TraceArchive(Path(db_path).parent / 'iq-traces')
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -93,6 +95,44 @@ def serve(host: str = "127.0.0.1", port: int = 8765, db_path: str | None = None)
                     self._json(store.summary(hours=hours))
                 except (ValueError, OverflowError):
                     self._json({"message": "Zeitfenster: 6, 24 oder 168 Stunden."}, 400)
+            elif self.path == "/api/iq/traces":
+                if self.headers.get("X-RFMonitor-Token") != csrf:
+                    self._json({"message": "Ungültiges Zugriffstoken"}, 403)
+                    return
+                self._json({"traces": trace_archive.list_recent(),
+                            "capture_mode": "explicit_cli_only", "tx_enabled": False})
+            elif urlsplit(self.path).path == "/api/iq/trace":
+                if self.headers.get("X-RFMonitor-Token") != csrf:
+                    self._json({"message": "Ungültiges Zugriffstoken"}, 403)
+                    return
+                try:
+                    query = parse_qs(urlsplit(self.path).query,
+                                     keep_blank_values=True, strict_parsing=True)
+                    if set(query) != {"id"} or len(query["id"]) != 1:
+                        raise ValueError("Ungültige Trace-Parameter")
+                    entry = trace_archive.read(query["id"][0])
+                    self._json({"trace": entry}, 200) if entry else self._json(
+                        {"message": "Trace nicht gefunden"}, 404)
+                except (ValueError, OverflowError):
+                    self._json({"message": "Ungültige Trace-ID"}, 400)
+            elif urlsplit(self.path).path == "/api/iq/samples":
+                if self.headers.get("X-RFMonitor-Token") != csrf:
+                    self._json({"message": "Ungültiges Zugriffstoken"}, 403)
+                    return
+                try:
+                    query = parse_qs(urlsplit(self.path).query,
+                                     keep_blank_values=True, strict_parsing=True)
+                    if set(query) != {"id", "start", "count"} or any(len(v) != 1 for v in query.values()):
+                        raise ValueError("Ungültige Parameter")
+                    start_txt, count_txt = query["start"][0], query["count"][0]
+                    if not (start_txt.isascii() and start_txt.isdecimal()
+                            and count_txt.isascii() and count_txt.isdecimal()):
+                        raise ValueError("Ungültige Zahlen")
+                    page = trace_archive.sample_page(query["id"][0], int(start_txt), int(count_txt))
+                    self._json(page, 200) if page else self._json(
+                        {"message": "Trace nicht gefunden"}, 404)
+                except (ValueError, OverflowError):
+                    self._json({"message": "Erwartet: id, start und count=512|2048|8192"}, 400)
             elif self.path == "/api/sources":
                 self._json({"sources": available_sources()})
             elif self.path == "/api/cc1101/status":

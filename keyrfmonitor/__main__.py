@@ -46,6 +46,8 @@ def main(argv=None) -> int:
     api.add_argument("--database", default=None)
     scan = sub.add_parser("scan", help="ADS-B befristet pausieren, Metadaten scannen, automatisch wiederherstellen")
     scan.add_argument("--seconds", type=int, default=60, help="Scan-Dauer, 20 bis 300 Sekunden (Standard 60)")
+    scan.add_argument("--iq", action="store_true",
+                      help="Explizit echte CU8-IQ-Bursts lokal speichern und FSK-Bithypothesen berechnen")
     offline = sub.add_parser("analyze", help="Lokale RTL-SDR CU8-Datei analysieren")
     offline.add_argument("file", type=Path)
     cc = sub.add_parser("cc1101", help="CC1101-Pinbelegung und nicht sendende SPI-Pruefung")
@@ -79,7 +81,7 @@ def main(argv=None) -> int:
     if args.cmd == "scan":
         from .adsb_session import ScanError, run_scan
         try:
-            return run_scan(seconds=args.seconds)
+            return run_scan(seconds=args.seconds, capture_iq=args.iq)
         except ScanError as exc:
             print(f"Scan fehlgeschlagen: {exc}", file=sys.stderr)
             return 2
