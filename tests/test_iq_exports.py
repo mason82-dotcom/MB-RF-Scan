@@ -106,8 +106,8 @@ class IQExportTests(unittest.TestCase):
             dict(baseline, bytes_saved=False),
             dict(baseline, iq_bytes=12),
         ]
-        for record in variants:
-            with self.subTest(variant=set(record.items()) - set(baseline.items())):
+        for index, record in enumerate(variants):
+            with self.subTest(variant=index):
                 metadata_file.write_text(json.dumps(record), encoding="utf-8")
                 with self.assertRaises(ArchiveExportError):
                     self.archive.export_bytes(self.identity, "cu8")
