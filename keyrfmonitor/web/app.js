@@ -336,3 +336,167 @@ $('session-detail-choice').addEventListener('change',()=>{
   });
 });
 refresh();setInterval(refresh,1500);
+
+
+/* Explicit opt-in, receive-only real CU8 trace visualizations. */
+let iqTraces=[];
+let iqCurrent=null;
+let iqPageStart=0;
+let iqRefreshToken=0;
+
+function iqAuthHeaders(){return {'X-RFMonitor-Token':token}}
+async function iqFetch(path){
+ const result=await fetch(path,{headers:iqAuthHeaders(),cache:'no-store'});
+ if(!result.ok)throw new Error('HTTP '+result.status);
+ return await result.json();
+}
+function iqEmptyCanvas(canvas,caption){
+ const ctx=canvas.getContext('2d');
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+ ctx.fillStyle='#9eafc7';ctx.font='14px sans-serif';
+ ctx.fillText(caption,20,canvas.height/2);
+}
+function iqChartFrame(ctx,w,h,caption){
+ ctx.fillStyle='#101d2b';ctx.fillRect(0,0,w,h);
+ ctx.strokeStyle='#415269';ctx.lineWidth=1;ctx.strokeRect(32,12,w-45,h-38);
+ ctx.fillStyle='#9eafc7';ctx.font='11px sans-serif';ctx.fillText(caption,38,h-8);
+}
+function iqLine(ctx,values,w,h,color,minVal,maxVal){
+ if(!values.length)return;
+ ctx.strokeStyle=color;ctx.lineWidth=1;ctx.beginPath();
+ const height=h-52;
+ const range=Math.max(.01,maxVal-minVal);
+ for(let j=0;j<values.length;j++){
+  const x=32+(w-45)*j/Math.max(1,values.length-1);
+  const y=12+height*(1-(values[j]-minVal)/range);
+  if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+ }
+ ctx.stroke();
+}
+function drawIQ(page){
+ const wave=$('iq-waveform'),wctx=wave.getContext('2d');
+ iqChartFrame(wctx,wave.width,wave.height,'I = cyan, Q = amber · Rohwerte 0–255');
+ wctx.strokeStyle='#425268';wctx.beginPath();wctx.moveTo(32,12+(wave.height-52)/2);wctx.lineTo(wave.width-13,12+(wave.height-52)/2);wctx.stroke();
+ iqLine(wctx,page.i,wave.width,wave.height,'#71ded1',0,255);
+ iqLine(wctx,page.q,wave.width,wave.height,'#edb96f',0,255);
+ const scatter=$('iq-constellation'),cctx=scatter.getContext('2d');
+ iqChartFrame(cctx,scatter.width,scatter.height,'I × Q · Nullpunkt 127,5');
+ const cX=scatter.width/2,cY=(scatter.height-14)/2;
+ cctx.fillStyle='#83dbc8';
+ const step=Math.max(1,Math.ceil(page.count/1800));
+ for(let i=0;i<page.count;i+=step){
+  const x=cX+(page.i[i]-127.5)*.56;
+  const y=cY-(page.q[i]-127.5)*.56;
+  cctx.fillRect(x,y,2,2);
+ }
+ const spec=$('iq-spectrum'),sctx=spec.getContext('2d');
+ iqChartFrame(sctx,spec.width,spec.height,'Relative Frequenz zum Empfängerzentrum [kHz]');
+ const vals=page.spectrum.map(p=>p.db);
+ if(vals.length){
+  const min=Math.min(...vals),max=Math.max(...vals);
+  iqLine(sctx,vals,spec.width,spec.height,'#8ccfdf',min-1,max+1);
+ }
+}
+function renderIQBits(trace){
+ const decoder=trace.decoder||{};
+ const bits=decoder.bits||'';
+ iqCurrent=trace;
+ $('iq-bits').textContent=bits?(bits.match(/.{1,8}/g)||[]).join(' '):'Keine Symbolentscheidungen ableitbar';
+ $('iq-copy-bits').disabled=!bits.length;
+ $('iq-bitcount').textContent=String(bits.length);
+ $('iq-baud').textContent=decoder.baud_nominal?decoder.baud_nominal+' Bd':'–';
+ $('iq-duration').textContent=Number.isFinite(trace.duration_ms)?trace.duration_ms.toFixed(1)+' ms':'–';
+ $('iq-total').textContent=trace.sample_count.toLocaleString('de-DE');
+ $('iq-snr').textContent=Number.isFinite(trace.peak_snr_db)?trace.peak_snr_db.toFixed(1)+' dB':'–';
+ const unknown=(bits.match(/\?/g)||[]).length;
+ $('iq-decoder-status').textContent='Nicht verifizierte '+decoder.method+' · Timingphase '+decoder.timing_offset_samples+' Samples · '+unknown+' unsichere Symbole von '+bits.length;
+ const max=Math.max(0,trace.sample_count-Number($('iq-pagesize').value));
+ $('iq-offset').max=String(max);
+ iqPageStart=Math.min(iqPageStart,max);
+ $('iq-offset').value=String(iqPageStart);
+}
+async function loadIQPage(){
+ if(!iqCurrent)return;
+ const current=iqCurrent.id;
+ const count=Number($('iq-pagesize').value);
+ const max=Math.max(0,iqCurrent.sample_count-count);
+ iqPageStart=Math.max(0,Math.min(max,iqPageStart));
+ $('iq-offset').max=String(max);
+ $('iq-offset').value=String(iqPageStart);
+ const query='/api/iq/samples?id='+encodeURIComponent(current)+'&start='+iqPageStart+'&count='+count;
+ const stamp=++iqRefreshToken;
+ const page=await iqFetch(query);
+ if(stamp!==iqRefreshToken||!iqCurrent||iqCurrent.id!==current)return;
+ drawIQ(page);
+ $('iq-range-label').textContent=(page.start+1).toLocaleString('de-DE')+'–'+(page.start+page.count).toLocaleString('de-DE')+' / '+page.total.toLocaleString('de-DE');
+ $('iq-prev').disabled=iqPageStart===0;
+ $('iq-next').disabled=iqPageStart+page.count>=page.total;
+ $('iq-offset').disabled=max===0;
+}
+async function selectIQTrace(){
+ const id=$('iq-choice').value;
+ if(!id){
+  iqCurrent=null;$('iq-copy-bits').disabled=true;
+  $('iq-status').textContent='Noch keine echte IQ-Aufnahme gespeichert.';
+  return;
+ }
+ iqPageStart=0;
+ const query='/api/iq/trace?id='+encodeURIComponent(id);
+ const result=await iqFetch(query);
+ if($('iq-choice').value!==id)return;
+ renderIQBits(result.trace);
+ await loadIQPage();
+ $('iq-status').textContent='Echter RTL-SDR-Burst vom '+fmtTime(result.trace.event_at)+' · nur lokal gespeichert';
+}
+async function refreshIQTraces(){
+ const data=await iqFetch('/api/iq/traces');
+ iqTraces=data.traces;
+ const choice=$('iq-choice'),previous=choice.value;
+ choice.replaceChildren();
+ if(!iqTraces.length){
+  choice.disabled=true;
+  const option=document.createElement('option');option.value='';option.textContent='Keine IQ-Traces gespeichert';
+  choice.append(option);
+  $('iq-recordings-status').textContent='Keine Aufnahmen';
+  $('iq-status').textContent='Mit dem Terminalbefehl scan --iq kann ein echter Burst erfasst werden.';
+  $('iq-bits').textContent='–';
+  iqCurrent=null;
+  return;
+ }
+ choice.disabled=false;
+ for(const trace of iqTraces){
+  const option=document.createElement('option');option.value=trace.id;
+  option.textContent=fmtTime(trace.event_at)+' · '+trace.duration_ms+' ms · '+trace.symbol_count+' Symbole';
+  choice.append(option);
+ }
+ choice.value=iqTraces.some(t=>t.id===previous)?previous:iqTraces[0].id;
+ $('iq-recordings-status').textContent=iqTraces.length+' Aufnahmen vorhanden';
+ await selectIQTrace();
+}
+function iqReportError(err){$('iq-status').textContent='IQ-Diagnose nicht erreichbar: '+err.message}
+$('iq-choice').addEventListener('change',()=>selectIQTrace().catch(iqReportError));
+$('iq-refresh').addEventListener('click',()=>refreshIQTraces().catch(iqReportError));
+$('iq-pagesize').addEventListener('change',()=>{iqPageStart=0;loadIQPage().catch(iqReportError)});
+$('iq-offset').addEventListener('change',value=>{
+ iqPageStart=Number(value.target.value);loadIQPage().catch(iqReportError);
+});
+$('iq-prev').addEventListener('click',()=>{
+ iqPageStart=Math.max(0,iqPageStart-Number($('iq-pagesize').value));
+ loadIQPage().catch(iqReportError);
+});
+$('iq-next').addEventListener('click',()=>{
+ iqPageStart+=Number($('iq-pagesize').value);
+ loadIQPage().catch(iqReportError);
+});
+$('iq-copy-bits').addEventListener('click',()=>{
+ if(!iqCurrent)return;
+ navigator.clipboard.writeText(iqCurrent.decoder.bits)
+  .then(()=>{$('iq-status').textContent='Unverifizierte FSK-Bitentscheidungen kopiert.'})
+  .catch(()=>{$('iq-status').textContent='Kopieren nicht verfügbar.'});
+});
+$('copy-iq').addEventListener('click',()=>{
+ navigator.clipboard.writeText($('iq-command').textContent)
+  .then(()=>{$('iq-status').textContent='IQ-Scanbefehl kopiert.'})
+  .catch(()=>{$('iq-status').textContent='Befehl manuell kopieren.'});
+});
+refreshIQTraces().catch(iqReportError);
