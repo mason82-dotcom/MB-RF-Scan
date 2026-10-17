@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import math
 import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
@@ -279,6 +280,127 @@ class EventStore:
                 notices.append("snr_missing")
             item["diagnostics"] = notices
         return rows
+
+
+    def session_timeline(self, session_id: int, bucket_seconds: int = 5) -> dict | None:
+        """Summarize linked *metadata* into bounded relative-time buckets.
+
+        This deliberately exposes no individual RF event timestamps, bitstreams,
+        IQ samples or keys. Historic v0.5 sessions have no linkable events.
+        """
+        if type(session_id) is not int or not 1 <= session_id <= 2147483647:
+            raise ValueError("Invalid scan ID")
+        if type(bucket_seconds) is not int or bucket_seconds not in (5, 10):
+            raise ValueError("Buckets must be 5 or 10 seconds")
+        with self.lock:
+            cursor = self.db.execute("""
+                SELECT id,started_at,finished_at,planned_seconds,result,
+                       restoration,burst_count,pair_count,stats_version
+                FROM scan_sessions WHERE id=?
+            """, (session_id,))
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            fields = [description[0] for description in cursor.description]
+            session = dict(zip(fields, row))
+            event_cursor = self.db.execute("""
+                SELECT e.at,e.kind,e.duration_ms,e.peak_snr_db
+                FROM scan_session_events l
+                JOIN events e ON e.id=l.event_id
+                WHERE l.session_id=? AND e.source='rtl_sdr' AND e.simulated=0
+                ORDER BY e.id ASC LIMIT 10001
+            """, (session_id,))
+            events = event_cursor.fetchall()
+
+        start = datetime.fromisoformat(session["started_at"]).astimezone(timezone.utc)
+        elapsed = (
+            datetime.fromisoformat(session["finished_at"]).astimezone(timezone.utc) - start
+        ).total_seconds() if session["finished_at"] else session["planned_seconds"]
+        # Bounded to 360s regardless of an abandoned/stale session's age.
+        window = min(360, max(session["planned_seconds"], math.ceil(max(0, elapsed))))
+        bucket_count = math.ceil(window / bucket_seconds)
+        bins = []
+        for index in range(bucket_count):
+            bins.append({"from_s": index * bucket_seconds,
+                         "to_s": min(window, (index + 1) * bucket_seconds),
+                         "bursts": 0, "pairs": 0,
+                         "avg_snr_db": None, "avg_duration_ms": None})
+        snr_edges = (10, 20, 30, 40)
+        snr_labels = ("<10 dB", "10–19 dB", "20–29 dB", "30–39 dB", "≥40 dB")
+        duration_edges = (100, 150, 200, 250)
+        duration_labels = ("<100 ms", "100–149 ms", "150–199 ms",
+                           "200–249 ms", "≥250 ms")
+        snr_counts = [0] * len(snr_labels)
+        duration_counts = [0] * len(duration_labels)
+        sums = [[0.0, 0, 0.0, 0] for _ in bins]
+        ignored = 0
+        # Even under intentionally dense noise bursts, reading stays bounded.
+        truncated = len(events) > 10000
+        for at, kind, duration, snr in events[:10000]:
+            try:
+                offset = (datetime.fromisoformat(at).astimezone(timezone.utc) -
+                          start).total_seconds()
+            except (TypeError, ValueError, OverflowError):
+                ignored += 1
+                continue
+            if not 0 <= offset < window:
+                ignored += 1
+                continue
+            index = min(len(bins) - 1, int(offset // bucket_seconds))
+            target = bins[index]
+            if kind == "pair":
+                target["pairs"] += 1
+                continue
+            if kind != "burst":
+                ignored += 1
+                continue
+            target["bursts"] += 1
+            if isinstance(snr, (int, float)) and math.isfinite(snr):
+                sums[index][0] += snr
+                sums[index][1] += 1
+                snr_counts[next((j for j, edge in enumerate(snr_edges) if snr < edge),
+                                len(snr_edges))] += 1
+            if isinstance(duration, (int, float)) and math.isfinite(duration):
+                sums[index][2] += duration
+                sums[index][3] += 1
+                duration_counts[next(
+                    (j for j, edge in enumerate(duration_edges) if duration < edge),
+                    len(duration_edges)
+                )] += 1
+        for bucket, (snr_sum, snr_total, duration_sum, duration_total) in zip(bins, sums):
+            if snr_total:
+                bucket["avg_snr_db"] = round(snr_sum / snr_total, 1)
+            if duration_total:
+                bucket["avg_duration_ms"] = round(duration_sum / duration_total, 1)
+
+        # A newly started scan can have zero events and still have a valid
+        # timeline. v0.5 sessions cannot be reconstructed after the fact.
+        available = session["stats_version"] > 0 or session["result"] == "running"
+        return {
+            "session_id": session_id,
+            "result": session["result"],
+            "restoration": session["restoration"],
+            "started_at": session["started_at"],
+            "planned_seconds": session["planned_seconds"],
+            "window_seconds": window,
+            "bucket_seconds": bucket_seconds,
+            "timeline_available": available,
+            "source": "rtl_sdr",
+            "simulated": False,
+            "buckets": bins if available else [],
+            "snr_distribution": [
+                {"label": label, "count": count}
+                for label, count in zip(snr_labels, snr_counts)
+            ] if available else [],
+            "duration_distribution": [
+                {"label": label, "count": count}
+                for label, count in zip(duration_labels, duration_counts)
+            ] if available else [],
+            "included_bursts": sum(b["bursts"] for b in bins),
+            "included_pairs": sum(b["pairs"] for b in bins),
+            "ignored_events": ignored,
+            "truncated": truncated,
+        }
 
     def close(self) -> None:
         with self.lock:

@@ -62,6 +62,27 @@ def serve(host: str = "127.0.0.1", port: int = 8765, db_path: str | None = None)
                 self._json({"events": store.recent()})
             elif self.path == "/api/sessions":
                 self._json({"sessions": store.recent_sessions(), "source": "cli_scan"})
+            elif urlsplit(self.path).path == "/api/session-detail":
+                try:
+                    parsed = urlsplit(self.path)
+                    params = parse_qs(parsed.query, keep_blank_values=True,
+                                      strict_parsing=True)
+                    if (set(params) != {"id", "bucket"}
+                            or len(params["id"]) != 1 or len(params["bucket"]) != 1
+                            or not params["id"][0].isascii()
+                            or not params["id"][0].isdecimal()
+                            or not params["bucket"][0].isascii()
+                            or not params["bucket"][0].isdecimal()):
+                        raise ValueError("Invalid session detail parameters")
+                    session_id = int(params["id"][0])
+                    bucket = int(params["bucket"][0])
+                    detail = store.session_timeline(session_id, bucket)
+                    if detail is None:
+                        self._json({"message": "Scan-Sitzung nicht gefunden."}, 404)
+                    else:
+                        self._json(detail)
+                except (ValueError, OverflowError):
+                    self._json({"message": "Gültige ID und bucket=5 oder 10 erforderlich."}, 400)
             elif urlsplit(self.path).path == "/api/summary":
                 try:
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True,

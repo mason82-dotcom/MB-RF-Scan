@@ -1,5 +1,15 @@
 # Änderungsprotokoll
 
+## 0.7.0 – Detaillierte Analyse einzelner Scans (2026-10-17)
+
+- Neue schreibgeschützte API `GET /api/session-detail?id=N&bucket=5|10` für reine Ereignis-Metadaten aus einer ausgewählten Sitzung.
+- Fünf- oder zehnsekündiger Burst-/Paarverlauf mit durchschnittlicher SNR und Burstdauer je Zeitfenster.
+- Grob gruppierte SNR- und Burstdauerverteilungen statt Einzelereignis-Timestamps, IQ-Rohdaten oder Symbolfolgen.
+- Maximale Auswertezeit 360 Sekunden, maximal 10.000 zugeordnete Ereignisse; zusätzliche Daten werden als `truncated` gekennzeichnet.
+- Alte v0.5-Sitzungen ohne Ereignis-ID-Zuordnung bleiben erhalten, werden aber explizit als nicht rekonstruierbar ausgewiesen.
+- Keine Änderung am exklusiven SDR-Zugriff, ADS-B-Dienst, sudo-Flow oder Root-Watchdog.
+
+
 ## 0.6.0 – Sitzungsvergleich und Empfangsdiagnose (2026-10-17)
 
 - Echte Burst-Metadaten werden einer aktiven CLI-Scan-Sitzung über Ereignis-IDs zugeordnet; synthetische CC1101-Ereignisse werden ausgeschlossen.
