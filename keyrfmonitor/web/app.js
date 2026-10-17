@@ -338,11 +338,14 @@ $('session-detail-choice').addEventListener('change',()=>{
 refresh();setInterval(refresh,1500);
 
 
-/* Explicit opt-in, receive-only real CU8 trace visualizations. */
+/* Automatically refreshed, receive-only real CU8 traces for manual scans. */
 let iqTraces=[];
 let iqCurrent=null;
 let iqPageStart=0;
 let iqRefreshToken=0;
+let iqInventoryBusy=false;
+let iqLastInventoryIds='';
+const IQ_REFRESH_INTERVAL_MS=4000;
 
 async function iqFetch(path){
  const result=await fetch(path,{cache:'no-store'});
@@ -448,29 +451,47 @@ async function selectIQTrace(){
  $('iq-status').textContent='Echter RTL-SDR-Burst vom '+fmtTime(result.trace.event_at)+' · nur lokal gespeichert';
 }
 async function refreshIQTraces(){
- const data=await iqFetch('/api/iq/traces');
- iqTraces=data.traces;
- const choice=$('iq-choice'),previous=choice.value;
- choice.replaceChildren();
- if(!iqTraces.length){
-  choice.disabled=true;
-  const option=document.createElement('option');option.value='';option.textContent='Keine IQ-Traces gespeichert';
-  choice.append(option);
-  $('iq-recordings-status').textContent='Keine Aufnahmen';
-  $('iq-status').textContent='Mit dem Terminalbefehl scan --iq kann ein echter Burst erfasst werden.';
-  $('iq-bits').textContent='–';
-  iqCurrent=null;
-  return;
+ // Periodic discovery must not reset a manually chosen trace or sample offset.
+ if(iqInventoryBusy)return;
+ iqInventoryBusy=true;
+ try{
+  const data=await iqFetch('/api/iq/traces');
+  const incoming=data.traces;
+  const signature=incoming.map(t=>t.id).join(',');
+  if(signature===iqLastInventoryIds && (iqCurrent || !incoming.length))return;
+  const wasLatest=iqTraces.length?iqTraces[0].id:null;
+  const choice=$('iq-choice'),previous=choice.value;
+  iqTraces=incoming;
+  iqLastInventoryIds=signature;
+  choice.replaceChildren();
+  if(!incoming.length){
+   choice.disabled=true;
+   const option=document.createElement('option');option.value='';option.textContent='Keine IQ-Traces gespeichert';
+   choice.append(option);
+   $('iq-recordings-status').textContent='Keine Aufnahmen';
+   $('iq-status').textContent='Neue IQ-/Bitaufnahmen erscheinen hier automatisch nach einem Scan.';
+   $('iq-bits').textContent='–';
+   iqCurrent=null;
+   return;
+  }
+  choice.disabled=false;
+  for(const trace of incoming){
+   const option=document.createElement('option');option.value=trace.id;
+   option.textContent=fmtTime(trace.event_at)+' · '+trace.duration_ms+' ms · '+trace.symbol_count+' Symbole';
+   choice.append(option);
+  }
+  const hasNewLatest=wasLatest!==incoming[0].id;
+  const stillAvailable=incoming.some(t=>t.id===previous);
+  // Always show a newly received burst immediately; never reload a stable
+  // selection merely because the periodic status poll ran.
+  choice.value=hasNewLatest||!stillAvailable?incoming[0].id:previous;
+  $('iq-recordings-status').textContent=incoming.length+' Aufnahmen vorhanden';
+  if(!iqCurrent || choice.value!==iqCurrent.id){
+   await selectIQTrace();
+  }
+ }finally{
+  iqInventoryBusy=false;
  }
- choice.disabled=false;
- for(const trace of iqTraces){
-  const option=document.createElement('option');option.value=trace.id;
-  option.textContent=fmtTime(trace.event_at)+' · '+trace.duration_ms+' ms · '+trace.symbol_count+' Symbole';
-  choice.append(option);
- }
- choice.value=iqTraces.some(t=>t.id===previous)?previous:iqTraces[0].id;
- $('iq-recordings-status').textContent=iqTraces.length+' Aufnahmen vorhanden';
- await selectIQTrace();
 }
 function iqReportError(err){$('iq-status').textContent='IQ-Diagnose nicht erreichbar: '+err.message}
 $('iq-choice').addEventListener('change',()=>selectIQTrace().catch(iqReportError));
@@ -499,3 +520,4 @@ $('copy-iq').addEventListener('click',()=>{
   .catch(()=>{$('iq-status').textContent='Befehl manuell kopieren.'});
 });
 refreshIQTraces().catch(iqReportError);
+setInterval(()=>refreshIQTraces().catch(iqReportError),IQ_REFRESH_INTERVAL_MS);
