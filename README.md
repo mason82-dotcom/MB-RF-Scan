@@ -362,3 +362,39 @@ Beim erstmaligen Laden einer leeren Datenbank ist die I/Q-Ansicht
 entsprechend leer. **Vor v0.8 vorhandene Burst-Metadaten enthalten
 keine I/Q-Samples** und können nicht rückwirkend um Bitfolgen
 ergänzt werden.
+
+## v0.9.0 – Erweiterte passiv-dekodierende Bitansicht
+
+Sobald ein manuell gestarteter Scan echte I/Q-Fenster gespeichert hat,
+lassen sich die Rohdaten **erneut und ohne Änderung der Aufnahme**
+als FSK-Hypothesen auswerten. Das IQ-Dashboard bietet zusätzliche
+Auswahlschalter für folgende Parameter:
+
+- Symbolraten: 600 / 1.000 / 1.200 / 1.600 / 2.000 / 2.400 /
+  3.200 / 4.000 / 4.800 / 9.600 Baud.
+- NRZ-Bitinterpretation oder alternative Manchester-Kodierung
+  mit zwei möglichen Paarphasen.
+- Normale oder invertierte Symbolpolarität.
+- Hex-Gruppierung in volle 8-Bit-Blöcke. Nicht sicher entscheidbare
+  Bytes werden ausdrücklich als `??` angezeigt, Restbits separat.
+
+Die neue **nur lesende** Schnittstelle ist
+`GET /api/iq/decode?id=<32-stellige-ID>&baud=2000&coding=nrz&polarity=normal&alignment=0`.
+Der Zugang bleibt auf `127.0.0.1` und die freigegebene Pi-LAN-IP
+`192.168.178.63` beschränkt; HTTP wird dadurch nicht verschlüsselt.
+Der Server bearbeitet maximal zwei rechenintensive Decode-Aufträge
+gleichzeitig; pro Anfrage wird höchstens eine Sekunde CU8-Material
+eingelesen. Private CU8- und Metadatendateien werden nicht verändert.
+
+Es werden der geschätzte Symboltaktversatz, die beiden
+FSK-Frequenzlagen aus der jeweiligen Symbolentscheidung, die
+Entscheidungsstärke, unklare Bits und ungültige Manchester-Paare
+sichtbar. Eine alternierende Bitfolge gilt **allenfalls als Hinweis
+auf ein mögliches Taktsignal**, nicht als bewiesene Präambel.
+
+**Wichtige Grenze:** Modulation, Baudrate, Bitpolarität, Manchester-
+Zuordnung, Byteanfang, Telegrammrahmen und Herstellerprotokoll
+werden nicht automatisch verifiziert. Die angezeigte Hex-Folge
+darf nicht als entschlüsselter oder authentifizierter Schlüsselcode
+verstanden werden. Kein HF-Senden, Replay, Schlüssel-Berechnen
+oder automatisches Aktivieren/Deaktivieren von ADS-B.

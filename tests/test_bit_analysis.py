@@ -9,7 +9,21 @@ from keyrfmonitor.bit_analysis import (
 )
 from keyrfmonitor.dsp import RFConfig
 from keyrfmonitor.iq_trace import TraceArchive
-from tests.test_iq_trace import synthetic_cu8
+import math
+import numpy as np
+
+def synthetic_cu8(bits: str, cfg: RFConfig) -> bytes:
+    samples_per_symbol = round(cfg.sample_rate / 2000)
+    frequencies = np.repeat(
+        np.array([cfg.high_offset_hz if bit == "1" else cfg.low_offset_hz
+                  for bit in bits], dtype=np.float64),
+        samples_per_symbol)
+    theta = 2 * math.pi * np.cumsum(frequencies) / cfg.sample_rate
+    iq = np.empty((len(theta), 2), dtype=np.uint8)
+    iq[:, 0] = np.clip(127.5 + 55 * np.cos(theta), 0, 255).astype(np.uint8)
+    iq[:, 1] = np.clip(127.5 + 55 * np.sin(theta), 0, 255).astype(np.uint8)
+    return iq.tobytes()
+
 
 
 class SymbolInterpretationTests(unittest.TestCase):
