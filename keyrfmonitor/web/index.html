@@ -77,10 +77,18 @@
     <div class="scan-command"><code id="scan-command">cd ~/Projekte/MB-RF-Scan &amp;&amp; /usr/bin/python3 -m keyrfmonitor scan --seconds 60</code><button id="copy-scan" class="secondary" type="button">Befehl kopieren</button></div>
     <p class="subtle">Dauer 20–300 Sekunden. Der Befehl fragt bei Bedarf nach dem sudo-Passwort.</p>
   </section>
+  <section class="panel sessions" aria-labelledby="sessions-title">
+    <div class="panel-head"><div><h3 id="sessions-title">Scan-Sitzungen</h3><span class="subtle">Befristete Terminalscans · lokale Sitzungsmetadaten</span></div><span class="subtle" id="sessions-updated">–</span></div>
+    <p class="info">Neue Terminalscans werden hier protokolliert. Ein noch offener Datensatz nach einem Abbruch bestätigt ausdrücklich keine ADS-B-Wiederherstellung. Frühere Messungen vor v0.5.0 sind nicht rückwirkend einzelnen Sitzungen zugeordnet.</p>
+    <div class="table-scroll"><table><thead><tr>
+      <th>Beginn</th><th>Soll / Ist</th><th>Ergebnis</th><th>ADS-B wiederhergestellt</th><th>Bursts</th><th>Paare</th>
+    </tr></thead><tbody id="session-body"><tr><td colspan="6" class="empty">Noch keine Scan-Sitzungen protokolliert</td></tr></tbody></table></div>
+    <p id="sessions-error" class="subtle" role="status"></p>
+  </section>
   <section class="panel events"><div class="panel-head"><h3>Letzte Messereignisse</h3><span class="subtle">Nur Metadaten</span></div>
     <div class="table-scroll"><table><thead><tr><th>Zeit (lokal)</th><th>Quelle</th><th>Typ</th><th>Dauer / Abstand</th><th>Pegelanstieg</th><th>SNR</th></tr></thead><tbody id="event-body"><tr><td colspan="6" class="empty">Noch keine Ereignisse</td></tr></tbody></table></div>
   </section>
-  <footer>MB-RF-Scan 0.4.0 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
+  <footer>MB-RF-Scan 0.5.0 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
 </div>
 </body>
 </html>

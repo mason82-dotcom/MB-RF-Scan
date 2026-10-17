@@ -59,6 +59,16 @@ class EventStore:
         for column, definition in migrations.items():
             if column not in present:
                 self.db.execute(f"ALTER TABLE events ADD COLUMN {column} {definition}")
+        self.db.execute("""CREATE TABLE IF NOT EXISTS scan_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          started_at TEXT NOT NULL,
+          finished_at TEXT,
+          planned_seconds INTEGER NOT NULL CHECK(planned_seconds BETWEEN 20 AND 300),
+          result TEXT NOT NULL CHECK(result IN ('running','completed','interrupted','error')),
+          restoration TEXT NOT NULL CHECK(restoration IN ('pending','verified','failed','not_required')),
+          burst_count INTEGER NOT NULL DEFAULT 0 CHECK(burst_count >= 0),
+          pair_count INTEGER NOT NULL DEFAULT 0 CHECK(pair_count >= 0)
+        )""")
         self.db.commit()
 
     def insert(self, event: dict) -> None:
@@ -135,6 +145,72 @@ class EventStore:
                 "peak_snr_db":round(summary[4],1) if summary[4] is not None else None,
                 "last_event_at":latest[0] if latest else None,
                 "buckets":buckets,"source":"rtl_sdr","simulated":False}
+
+
+    def start_session(self, planned_seconds: int) -> int:
+        """Record an explicitly authorized CLI scan; never start the SDR."""
+        if type(planned_seconds) is not int or not 20 <= planned_seconds <= 300:
+            raise ValueError("Scan session duration outside 20..300 seconds")
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with self.lock:
+            cursor = self.db.execute(
+                "INSERT INTO scan_sessions(started_at,planned_seconds,result,restoration) "
+                "VALUES (?,?, 'running','pending')", (timestamp, planned_seconds))
+            self.db.commit()
+            return cursor.lastrowid
+
+    def finish_session(self, session_id: int, *, result: str, restoration: str,
+                       burst_count: int = 0, pair_count: int = 0) -> None:
+        """Write final metadata, after ADS-B recovery was attempted and checked."""
+        if type(session_id) is not int or session_id < 1:
+            raise ValueError("Invalid scan session ID")
+        if result not in ("completed", "interrupted", "error"):
+            raise ValueError("Invalid scan result")
+        if restoration not in ("verified", "failed", "not_required"):
+            raise ValueError("Invalid restoration state")
+        if result == "completed" and restoration != "verified":
+            raise ValueError("Successful scan requires verified ADS-B restoration")
+        if (type(burst_count) is not int or burst_count < 0 or
+            type(pair_count) is not int or pair_count < 0):
+            raise ValueError("Invalid event counts")
+        ended_at = datetime.now(timezone.utc).isoformat()
+        with self.lock:
+            cursor = self.db.execute(
+                """UPDATE scan_sessions SET finished_at=?, result=?, restoration=?,
+                   burst_count=?, pair_count=?
+                   WHERE id=? AND result='running'""",
+                (ended_at, result, restoration, burst_count, pair_count, session_id))
+            if cursor.rowcount != 1:
+                self.db.rollback()
+                raise ValueError("Session missing or already finalized")
+            self.db.commit()
+
+    def recent_sessions(self, limit: int = 30, *, now: datetime | None = None) -> list[dict]:
+        """Return bounded, read-only scan summaries; an unfinished row stays unverified.
+
+        A crash cannot falsely mark ADS-B as restored. Root watchdog remains the
+        recovery mechanism, independent from SQLite bookkeeping.
+        """
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("Session limit must be between 1 and 100")
+        now = now or datetime.now(timezone.utc)
+        if now.tzinfo is None:
+            raise ValueError("Time must be timezone aware")
+        now = now.astimezone(timezone.utc)
+        with self.lock:
+            cursor = self.db.execute(
+                """SELECT id,started_at,finished_at,planned_seconds,result,restoration,
+                          burst_count,pair_count FROM scan_sessions
+                   ORDER BY id DESC LIMIT ?""", (limit,))
+            fields = [field[0] for field in cursor.description]
+            rows = [dict(zip(fields, row)) for row in cursor.fetchall()]
+        for item in rows:
+            start = datetime.fromisoformat(item["started_at"])
+            end = datetime.fromisoformat(item["finished_at"]) if item["finished_at"] else now
+            item["elapsed_seconds"] = max(0, round((end - start).total_seconds(), 1))
+            item["stale"] = (item["result"] == "running" and
+                             item["elapsed_seconds"] > item["planned_seconds"] + 90)
+        return rows
 
     def close(self) -> None:
         with self.lock:

@@ -104,6 +104,7 @@ def run_scan(seconds: int = 60, *, control: ADSBControl | None = None,
     store_path = Path(database) if database else Path.home() / ".local/share/keyrfmonitor/events.sqlite3"
     monitor = None
     store = None
+    session_id = None
     armed = False
     failure: Exception | None = None
     restored = False
@@ -114,12 +115,16 @@ def run_scan(seconds: int = 60, *, control: ADSBControl | None = None,
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, on_term)
+    burst_count = 0
+    pair_count = 0
     try:
+        # Validate/write session metadata before interrupting any ADS-B service.
+        store = EventStore(store_path)
+        session_id = store.start_session(seconds)
         # Arm the independent root-owned restoration timer BEFORE stopping ADS-B.
         ctl.arm(seconds)
         armed = True
         ctl.pause()
-        store = EventStore(store_path)
         monitor = Monitor(store)
         ok, msg = monitor.start()
         if not ok:
@@ -145,10 +150,10 @@ def run_scan(seconds: int = 60, *, control: ADSBControl | None = None,
             if monitor is not None:
                 monitor.close()  # SDR released before ADS-B is restarted.
                 status = monitor.status()
-                print(f"Ergebnis: {status.get('burst_count', 0)} Bursts, "
-                      f"{status.get('pair_count', 0)} Paare.", flush=True)
-            if store is not None:
-                store.close()
+                burst_count = int(status.get("burst_count", 0))
+                pair_count = int(status.get("pair_count", 0))
+                print(f"Ergebnis: {burst_count} Bursts, "
+                      f"{pair_count} Paare.", flush=True)
         except Exception as exc:
             failure = failure or exc
         try:
@@ -167,7 +172,23 @@ def run_scan(seconds: int = 60, *, control: ADSBControl | None = None,
                 # ADS-B is already back; a redundant future watchdog start is harmless.
                 print(f"Hinweis: Watchdog konnte nicht deaktiviert werden: {exc}",
                       file=sys.stderr, flush=True)
-        signal.signal(signal.SIGTERM, old_sigterm)
+        # Final bookkeeping happens only AFTER the recovery attempt.
+        # SIGKILL leaves a 'running/pending' row rather than a false success.
+        try:
+            if store is not None and session_id is not None:
+                outcome = "error" if failure else "interrupted" if interrupted else "completed"
+                recovery = "verified" if restored else "failed" if armed else "not_required"
+                store.finish_session(session_id, result=outcome, restoration=recovery,
+                                     burst_count=burst_count, pair_count=pair_count)
+        except Exception as exc:
+            failure = failure or exc
+        finally:
+            try:
+                if store is not None:
+                    store.close()
+            except Exception as exc:
+                failure = failure or exc
+            signal.signal(signal.SIGTERM, old_sigterm)
     if failure:
         raise ScanError(str(failure)) from failure
     return 130 if interrupted else 0

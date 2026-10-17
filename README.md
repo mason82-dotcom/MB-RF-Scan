@@ -221,3 +221,11 @@ Anleitung, Prüfung, Rollback und Deaktivierung: [docs/PI_SYNC.md](docs/PI_SYNC.
 ## v0.4.0: Echtzeitdiagnose und Verlauf
 
 Die Weboberfläche zeigt einen Pegeltrend aus den Statusmetadaten des aktiven Web-Empfängers sowie einen Verlauf der realen RTL-SDR-Ereignisse über 6, 24 oder 168 Stunden. Der Endpunkt `GET /api/summary?hours=24` liefert aggregierte SQLite-Metadaten (keine IQ-Daten, Schlüsselbits oder Senderbefehle). Simulierte CC1101-Ereignisse werden in der Ereignistabelle gekennzeichnet, jedoch nicht in der Statistik mitgezählt. Bei zeitlich begrenzten Konsolenscans bleibt der Livepegel des Web-Monitors inaktiv; die gespeicherten Burst-Ereignisse aktualisieren den Verlauf. Die HTML-Oberfläche stoppt ADS-B nicht und führt kein sudo aus.
+
+## v0.5.0: Scan-Sitzungsverlauf
+
+Bei jedem autorisierten Terminalscan (`/usr/bin/python3 -m keyrfmonitor scan --seconds 60`) wird ein lokaler Datensatz angelegt. Nach dem Scan werden Ausführungsdauer, Burst- und Paarzahlen und das Ergebnis der ADS-B-Wiederherstellungsprüfung nachgetragen.
+
+Die API `GET /api/sessions` zeigt höchstens 30 der jüngsten Sitzungen und speichert ausschließlich Metadaten. Nicht beendete Datensätze behalten `running/pending` und können nach Ablauf der geplanten Dauer als unvollständig markiert werden. **Dies ist kein zuverlässiger Hinweis auf den aktuellen Dienstzustand:** Der unabhängige Root-Watchdog bleibt für die ADS-B-Rückschaltung zuständig. Alte Burst-Ereignisse aus v0.3/v0.4 werden nicht rückwirkend Sitzungen zugeordnet.
+
+Auch v0.5.0 startet weder Scans noch `sudo`-Kommandos aus dem Browser. Der Webserver zeigt Sitzungen nur lesend an.

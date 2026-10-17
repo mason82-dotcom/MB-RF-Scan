@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from keyrfmonitor import __main__
 from keyrfmonitor.adsb_session import ADSBControl, ScanError, run_scan
+from keyrfmonitor.storage import EventStore
 
 
 class FakeControl:
@@ -100,6 +101,12 @@ class ScanModeTests(unittest.TestCase):
         self.assertEqual(ctrl.seconds, 60)
         self.assertTrue(ctrl.active)
         self.assertTrue(FakeMonitor.instances[-1].closed)
+        store = EventStore(self.path)
+        session = store.recent_sessions()[0]
+        self.assertEqual(session["result"], "completed")
+        self.assertEqual(session["restoration"], "verified")
+        self.assertEqual((session["burst_count"], session["pair_count"]), (2, 1))
+        store.close()
 
     def test_start_failure_restores_and_disarms(self):
         FakeMonitor.fail_start = True
@@ -111,6 +118,10 @@ class ScanModeTests(unittest.TestCase):
                 run_scan(60, control=ctrl, database=self.path)
         self.assertEqual(ctrl.commands[-2:], ["restore", "disarm"])
         self.assertTrue(ctrl.active)
+        store = EventStore(self.path)
+        session = store.recent_sessions()[0]
+        self.assertEqual((session["result"], session["restoration"]), ("error", "verified"))
+        store.close()
 
     def test_pause_failure_recovers(self):
         ctrl = FakeControl(fail_at="pause")
@@ -129,6 +140,10 @@ class ScanModeTests(unittest.TestCase):
         self.assertNotIn("pause", ctrl.commands)
         self.assertNotIn("restore", ctrl.commands)
         self.assertTrue(ctrl.active)
+        store = EventStore(self.path)
+        session = store.recent_sessions()[0]
+        self.assertEqual((session["result"], session["restoration"]), ("error", "not_required"))
+        store.close()
 
     def test_restore_failure_retains_watchdog(self):
         ctrl = FakeControl(fail_at="restore")
@@ -139,6 +154,10 @@ class ScanModeTests(unittest.TestCase):
             with self.assertRaises(ScanError):
                 run_scan(60, control=ctrl, database=self.path)
         self.assertNotIn("disarm", ctrl.commands)
+        store = EventStore(self.path)
+        session = store.recent_sessions()[0]
+        self.assertEqual((session["result"], session["restoration"]), ("error", "failed"))
+        store.close()
 
     def test_cli_invalid_seconds(self):
         err = io.StringIO()
