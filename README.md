@@ -478,3 +478,38 @@ IP-gebundene Dashboard-Sicherheitsgrenze (Loopback plus Pi-IP
 daher nur im vertrauenswürdigen Heimnetz verwenden. Der
 20–300-s-CLI-Scan, der ADS-B-Watchdog, die Archivgrenzen und
 alle bestehenden Aufnahmen bleiben unverändert.
+
+## v0.9.3 – Konservative Schwellenwert-Sensitivität
+
+Die neue Version behält die bisherige 1-ms-Hüllkurvenanalyse bei und
+ergänzt in jedem `GET /api/iq/pair-quality?pair=N` unter
+`first.threshold_sensitivity` und `second.threshold_sensitivity`
+eine separate **rein lesende** Schwellenwertauswertung. Das Dashboard
+zeigt je Paar die Ergebnisse für 6,0 / 6,5 / 7,0 / 7,5 / 8,0 / 8,5 /
+9,0 dB oberhalb der zuvor geschätzten lokalen Rauschreferenz:
+
+- Anzahl zusammenhängender Energieabschnitte je Schwelle;
+- längster Abschnitt und längste dazwischenliegende Lücke;
+- gegebenenfalls eine **ausdrücklich hypothetische** aktive Dauer
+  bei 7,0 dB, jedoch nur wenn 6,5 und 7,0 dB ähnliche Signalflanken
+  ergeben, ausreichender Rauschvorlauf vorhanden ist, der Kontrast
+  mindestens 12 dB erreicht und das reguläre Verfahren bei etwa 8 dB
+  Fragmentierung meldet.
+
+Der bekannte Burst 8 mit 19-ms-Lücke bei 8 dB erscheint bei 6,5–7,0 dB
+als ein Abschnitt mit ungefähr 174 ms Dauer. Das ist ein starker Hinweis
+auf eine **schwellenwertabhängige Segmentierung**, aber kein Beweis,
+dass das Funksignal für 174 ms kontinuierlich moduliert war. Die
+ursprüngliche Klassifikation `fragmented_envelope` wird deshalb
+**nicht geändert**; die Kandidatendauer ist kein validierter Messwert.
+
+Die Berechnung basiert auf dem auf 0,1 dB gerundeten, gespeicherten
+Ausgabeprofil der 1-ms-RMS-Hüllkurve. Unterschiedliche Schwellen
+können damit durch Rundung anders wirken als ein ungefilterter
+Rohsample-Algorithmus. Es wird kein Protokoll, Keycode,
+Schlüsselzustand oder Bitmuster zugeordnet.
+
+Keine Änderung am SDR-Aufnahmeverfahren, ADS-B-Watchdog,
+originalen CU8-/JSON-Dateien, LAN-Zugriffsgrenzen oder den
+bestehenden Endpunkten. Die Auswertung erfolgt ausschließlich
+aus vorhandenen Dateien und ohne jegliche HF-Aussendung.

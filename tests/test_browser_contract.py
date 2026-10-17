@@ -50,6 +50,11 @@ class BrowserContractTests(unittest.TestCase):
         self.assertIn("'/api/iq/pair-quality?pair='", js)
         self.assertIn("drawIQEnvelope", js)
         self.assertIn("renderIQPairQuality", js)
+        self.assertIn("renderIQSensitivity", js)
+        self.assertIn("iq-sensitivity-body", js)
+        self.assertIn("threshold_sensitive_fragmentation", js)
+        self.assertIn("iq-sensitivity-status",
+                      (WEB / "index.html").read_text(encoding="utf-8"))
         self.assertIn("iq-quality-pair", js)
         self.assertIn("iq-envelope-canvas", (WEB / "index.html").read_text(encoding="utf-8"))
         self.assertIn("scan --seconds 20", (WEB / "index.html").read_text(encoding="utf-8"))

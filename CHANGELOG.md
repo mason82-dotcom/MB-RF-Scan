@@ -1,5 +1,14 @@
 # Änderungsprotokoll
 
+## v0.9.3 – Schwellenwert-Sensitivität für archivierte I/Q-Signale
+
+- Separate, rein lesende Schwellenwertprüfung bei 6,0 bis 9,0 dB über lokalem Rauschpegel; Hüllkurvenabschnitte, längster Abschnitt und größte Lücke.
+- Bei ausreichend stabilem Befund an zwei niedrigeren Schwellen vorläufige Kandidaten-Schätzung, ohne die ursprünglichen `edge_status`-Werte zu überschreiben.
+- Dashboard vergleicht beide Bursts eines ausgewählten Paares in einer Sensitivitätstabelle und kennzeichnet hypothetische Aussagen.
+- Synthetische Regressionstests für 19-ms-Amplitudeneinbruch gegenüber echter Sendeunterbrechung, unsichere Referenz und unveränderte Daten.
+- Keine Übertragung, Replay-Funktion, automatische ADS-B-Umschaltung oder neue Speicherung von Schlüsselbits.
+
+
 ## v0.9.2 – Gespeicherte CU8-Hüllkurven statt Bitcode-Raten
 
 - Read-only Analyse zweier gespeicherter I/Q-Bursts mit 1-ms-RMS-Energieraster und Rauschreferenz aus dem aufgenommenen Vor-/Nachlauf.

@@ -357,6 +357,13 @@ class SummaryHTTPTests(unittest.TestCase):
             "compatible_with_detector_boundary_difference")
         self.assertEqual(data["second"]["estimated_end_offset_ms"], -10.0)
         self.assertEqual(len(data["first"]["profile"]), 230)
+        sensitivity = data["second"]["threshold_sensitivity"]
+        self.assertEqual(len(sensitivity["rows"]), 7)
+        self.assertEqual(sensitivity["status"], "original_edges_estimated")
+        self.assertIsNone(sensitivity["candidate_active_duration_ms"])
+        self.assertTrue(sensitivity["original_edge_status_preserved"])
+        self.assertFalse(sensitivity["automatic_threshold_change"])
+        self.assertFalse(sensitivity["transmission_continuity_verified"])
         self.assertTrue(data["read_only"])
         self.assertFalse(data["contains_raw_iq_or_key_bits"])
         self.assertEqual(
@@ -380,6 +387,45 @@ class SummaryHTTPTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as empty:
             urlopen(self.base + "/api/iq/pair-quality?pair=1", timeout=4)
         self.assertEqual(empty.exception.code, 404)
+
+
+    def test_iq_pair_threshold_sensitivity_reports_7db_as_tentative(self):
+        from datetime import timedelta
+        archive = TraceArchive(self.db.parent / "iq-traces")
+        cfg = RFConfig()
+        ms = cfg.sample_rate // 1000
+        # Pair 2 has a constant-energy first burst and a weak, but nonzero,
+        # 19 ms section that falls below 8 dB, not below 7 dB.
+        for index in range(2):
+            signal = (
+                b"\x80\x80" * (25 * ms)
+                + b"\x83\x80" * (45 * ms)
+                + (b"\x83\x80" if index == 0 else b"\x81\x80") * (19 * ms)
+                + b"\x83\x80" * (110 * ms)
+                + b"\x80\x80" * (31 * ms)
+            )
+            event = {
+                "kind": "burst",
+                "at": (datetime.now(timezone.utc) +
+                       timedelta(milliseconds=index * 510)).isoformat(),
+                "start_s": 0.020, "end_s": 0.200,
+                "duration_ms": 180.0, "peak_snr_db": 30.0,
+                "peak_rise_db": 20.0,
+            }
+            self.assertIsNotNone(archive.save(signal, event, cfg, 0))
+        with urlopen(self.base + "/api/iq/pair-quality?pair=1", timeout=12) as r:
+            payload = json.load(r)
+        second = payload["second"]
+        sensitivity = second["threshold_sensitivity"]
+        self.assertEqual(second["edge_status"], "fragmented_envelope")
+        self.assertEqual(sensitivity["status"], "threshold_sensitive_fragmentation")
+        self.assertEqual(sensitivity["candidate_active_duration_ms"], 174.0)
+        self.assertEqual(sensitivity["candidate_threshold_db"], 7.0)
+        self.assertEqual(sensitivity["rows"][4]["largest_gap_ms"], 19)
+        self.assertFalse(sensitivity["automatic_threshold_change"])
+        self.assertFalse(sensitivity["transmission_continuity_verified"])
+        self.assertNotIn("bits", json.dumps(sensitivity))
+        self.assertNotIn("decoder", json.dumps(sensitivity))
 
 
 

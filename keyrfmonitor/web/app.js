@@ -610,6 +610,57 @@ function drawIQEnvelope(first,second){
  ctx.fillStyle=profiles[1].color;ctx.fillRect(w-95,19,10,10);
  ctx.fillStyle='#d7e5f3';ctx.fillText('Burst 2',w-80,28);
 }
+/* v0.9.3: read-only sensitivity sweep, 0.1 dB rounded energy bins. */
+function renderIQSensitivity(a,b){
+ const tbody=$('iq-sensitivity-body');
+ tbody.replaceChildren();
+ const first=a.threshold_sensitivity||{},second=b.threshold_sensitivity||{};
+ const fa=Array.isArray(first.rows)?first.rows:[];
+ const fb=Array.isArray(second.rows)?second.rows:[];
+ const count=Math.min(fa.length,fb.length);
+ if(!count){
+  const tr=document.createElement('tr'),td=document.createElement('td');
+  td.colSpan=4;td.className='empty';td.textContent='Schwellenwertvergleich nicht auswertbar.';
+  tr.append(td);tbody.append(tr);
+ }else{
+  for(let i=0;i<count;i++){
+   const x=fa[i],y=fb[i],tr=document.createElement('tr');
+   const level=Number(x.threshold_above_reference_db);
+   if(level===8.0)tr.className='iq-sensitivity-nominal';
+   if(level===7.0)tr.className='iq-sensitivity-candidate';
+   const fields=[
+    level.toFixed(1)+' dB',
+    x.segment_count+' / '+y.segment_count,
+    x.longest_segment_ms+' / '+y.longest_segment_ms+' ms',
+    x.largest_gap_ms+' / '+y.largest_gap_ms+' ms'
+   ];
+   for(const value of fields){
+    const td=document.createElement('td');
+    td.textContent=value;tr.append(td);
+   }
+   tbody.append(tr);
+  }
+ }
+ const descriptions={
+  threshold_sensitive_fragmentation:'Schwellenabhängige Fragmentierung',
+  fragmentation_not_resolved:'Fragmentierung auch bei niedrigeren Schwellen',
+  original_edges_estimated:'Ausgangsflanken bereits geschätzt',
+  capture_edge_clipped:'Signal am Aufnahmerand abgeschnitten',
+  nominal_threshold_outside_sweep:'Originalschwelle außerhalb der Vergleichswerte',
+  not_assessable:'Nicht auswertbar',
+  inconclusive:'Keine belastbare Einordnung'
+ };
+ const summary=(info,index)=>{
+  const state=descriptions[info.status]||descriptions.inconclusive;
+  const proposed=Number.isFinite(info.candidate_active_duration_ms)
+    ?' (nur hypothetisch bei '+info.candidate_threshold_db.toFixed(1)+
+      ' dB: '+info.candidate_active_duration_ms.toFixed(1)+' ms)'
+    :'';
+  return 'Burst '+index+': '+state+proposed;
+ };
+ $('iq-sensitivity-status').textContent=summary(first,1)+'. '+summary(second,2)+
+  '. Keine automatische Schwellenwertänderung oder Bestätigung einer Sendepause.';
+}
 function renderIQPairQuality(report){
  const a=report.first,b=report.second,c=report.comparison;
  $('iq-detector-durations').textContent=
@@ -644,6 +695,7 @@ function renderIQPairQuality(report){
    (Number.isFinite(b.signal_above_reference_db)?b.signal_above_reference_db.toFixed(1)+' dB':'–')+
    ' · Startabstand: '+iqMetric(report.start_gap_ms);
  drawIQEnvelope(a,b);
+ renderIQSensitivity(a,b);
 }
 async function refreshIQPairQuality(){
  if(iqQualityBusy)return;
