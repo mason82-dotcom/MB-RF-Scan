@@ -1,6 +1,7 @@
 """Explicit, bounded scan session with fail-safe restoration of dump1090.
 
-Only invoked from the interactive CLI. No web endpoint, autostart or raw IQ capture.
+Only invoked from the interactive CLI. No web endpoint or autostart; raw
+CU8 IQ is saved exclusively when the operator passes --iq.
 The operator authorizes a single scan with sudo -v. A root-owned transient systemd
 watchdog is armed *before* ADS-B is stopped, so SIGKILL of this process cannot
 leave ADS-B off indefinitely. The watchdog only ever starts dump1090.service.
@@ -16,6 +17,8 @@ import time
 
 from .receiver import Monitor
 from .storage import EventStore
+from .iq_trace import TraceArchive, TraceCollector
+from .dsp import RFConfig
 
 ADS_B_UNIT = "dump1090.service"
 WATCHDOG_UNIT = "keyrfmonitor-adsb-restore"
@@ -85,12 +88,15 @@ class ADSBControl:
 
 
 def run_scan(seconds: int = 60, *, control: ADSBControl | None = None,
-             database: str | Path | None = None) -> int:
+             database: str | Path | None = None,
+             capture_iq: bool = False) -> int:
     """Pause active ADS-B, receive metadata for bounded time, then restore it.
 
     Refuses to manage service if it was not active beforehand. Does not touch
     CC1101 or change service enablement. A watchdog handles abrupt process death.
     """
+    if type(capture_iq) is not bool:
+        raise ScanError('capture_iq must be explicitly True or False')
     if not MIN_SECONDS <= seconds <= MAX_SECONDS:
         raise ScanError(f"Scan-Dauer muss zwischen {MIN_SECONDS} und {MAX_SECONDS} Sekunden liegen.")
     ctl = control or ADSBControl()
@@ -117,20 +123,33 @@ def run_scan(seconds: int = 60, *, control: ADSBControl | None = None,
     signal.signal(signal.SIGTERM, on_term)
     burst_count = 0
     pair_count = 0
+    trace = None
     try:
         # Validate/write session metadata before interrupting any ADS-B service.
         store = EventStore(store_path)
         session_id = store.start_session(seconds)
+        if capture_iq:
+            # Opt-in only: retain finite burst windows, not an open-ended stream.
+            config = RFConfig()
+            archive = TraceArchive(store_path.parent / "iq-traces")
+            trace = TraceCollector(archive, config)
         # Arm the independent root-owned restoration timer BEFORE stopping ADS-B.
         ctl.arm(seconds)
         armed = True
         ctl.pause()
-        monitor = Monitor(store)
+        monitor = Monitor(store, config=config, trace=trace) if capture_iq else Monitor(store)
         ok, msg = monitor.start()
         if not ok:
             raise ScanError(msg)
         print(f"KeyRFMonitor: Scan läuft {seconds} s; ADS-B wird danach automatisch wieder gestartet.", flush=True)
-        print("Nur Burst-Metadaten. Kein Senden, keine Codes, keine IQ-Speicherung.", flush=True)
+        if capture_iq:
+            print("OPT-IN IQ: Echte CU8-Bursts und unbestätigte FSK-Bithypothesen "
+                  "werden PRIVAT gespeichert; keine HF-Aussendung oder Replay.", flush=True)
+            print("Begrenzung: max. 48 Burst-Traces je Scan, max. 64 MiB Archiv "
+                  "und 128 MiB freier Speicher als Reserve.", flush=True)
+        else:
+            print("Nur Burst-Metadaten. Kein Senden, keine Codes, keine IQ-Speicherung.",
+                  flush=True)
         end = time.monotonic() + seconds
         while time.monotonic() < end:
             status = monitor.status()
@@ -154,6 +173,10 @@ def run_scan(seconds: int = 60, *, control: ADSBControl | None = None,
                 pair_count = int(status.get("pair_count", 0))
                 print(f"Ergebnis: {burst_count} Bursts, "
                       f"{pair_count} Paare.", flush=True)
+                if trace is not None:
+                    print(f"IQ-Traces: {trace.saved} gespeichert, "
+                          f"{trace.skipped} nicht erfasst. Archiv: "
+                          f"{trace.archive.path}", flush=True)
         except Exception as exc:
             failure = failure or exc
         try:

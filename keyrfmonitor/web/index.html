@@ -44,8 +44,8 @@
       <div class="status-line"><span>Kalibrierung</span><b id="cal-status">–</b></div>
       <div class="status-line"><span>Temporärer Konsolenscan</span><b id="external-scan">Inaktiv</b></div>
       <div class="status-line"><span>CC1101 (SPI)</span><b>Vorbereitet · kein RX/TX</b></div>
-      <div class="status-line"><span>IQ-Dateien gespeichert</span><b>Nein</b></div>
-      <div class="status-line"><span>Schlüsselcodes gespeichert</span><b>Nein</b></div>
+      <div class="status-line"><span>IQ-Diagnoseaufnahmen</span><b id="iq-recordings-status">Nur bei explizitem --iq</b></div>
+      <div class="status-line"><span>FSK-Symbolhypothesen</span><b>Nur bei --iq, unverifiziert</b></div>
       <div class="info">Für die Web-Messung ist weiterhin eine manuelle Freigabe nötig. Der separate befristete Konsolenmodus übernimmt ADS-B-Stopp und -Neustart kontrolliert und ist nur mit ausdrücklicher sudo-Freigabe ausführbar.</div>
       <pre id="backend-error" class="error" hidden></pre>
     </article>
@@ -130,10 +130,72 @@
     </tr></thead><tbody id="session-body"><tr><td colspan="9" class="empty">Noch keine Scan-Sitzungen protokolliert</td></tr></tbody></table></div>
     <p id="sessions-error" class="subtle" role="status"></p>
   </section>
+  <section class="panel iq-lab" aria-labelledby="iq-title">
+    <div class="panel-head">
+      <div>
+        <h3 id="iq-title">Echte I/Q-Signale und FSK-Bitansicht</h3>
+        <span class="subtle">RTL-SDR · vollständige CU8-Samples je Burst, seitenweise visualisiert</span>
+      </div>
+      <span class="pill neutral">Explizite Diagnose · kein Replay</span>
+    </div>
+    <p class="info">
+      IQ-Aufnahmen werden ausschließlich mit <code>scan --iq</code> gespeichert.
+      Die Bithypothese stammt aus einem 2.000-Bd-FSK-Phasendiskriminator.
+      Ein Fragezeichen markiert unsichere Symbole; Framing, Verschlüsselung und
+      Telegrammgültigkeit werden nicht verifiziert.
+      Der Scan wird nach 20–300 Sekunden beendet und ADS-B wiederhergestellt.
+    </p>
+    <div class="scan-command">
+      <code id="iq-command">cd ~/Projekte/MB-RF-Scan &amp;&amp; /usr/bin/python3 -m keyrfmonitor scan --seconds 20 --iq</code>
+      <button id="copy-iq" class="secondary" type="button">IQ-Scanbefehl kopieren</button>
+    </div>
+    <p class="subtle">IQ-Aufnahmen ohne zusätzliche Tokenabfrage im Heimnetz 192.168.178.0/24 anzeigen. Netzwerkzugriff über HTTP ist unverschlüsselt.</p>
+    <div class="iq-controls">
+      <label for="iq-choice">Gespeichertes Signal
+        <select id="iq-choice" disabled><option value="">Keine IQ-Traces gespeichert</option></select>
+      </label>
+      <button id="iq-refresh" class="secondary" type="button">Aufnahmen aktualisieren</button>
+      <label for="iq-pagesize">Ansicht
+        <select id="iq-pagesize">
+          <option value="512">512 Samples</option>
+          <option value="2048" selected>2.048 Samples</option>
+          <option value="8192">8.192 Samples</option>
+        </select>
+      </label>
+    </div>
+    <p id="iq-status" class="subtle" role="status">Noch keine I/Q-Daten geladen.</p>
+    <div class="iq-trace-stats">
+      <div><span>Signaldauer</span><strong id="iq-duration">–</strong></div>
+      <div><span>Samples</span><strong id="iq-total">–</strong></div>
+      <div><span>Bithypothese</span><strong id="iq-bitcount">–</strong></div>
+      <div><span>FSK-Baudrate</span><strong id="iq-baud">–</strong></div>
+      <div><span>Spitzen-SNR</span><strong id="iq-snr">–</strong></div>
+    </div>
+    <div class="iq-pager">
+      <button id="iq-prev" class="secondary" disabled>← Vorherige</button>
+      <input type="range" id="iq-offset" value="0" min="0" max="0" step="1" disabled aria-label="I/Q-Samples navigieren">
+      <button id="iq-next" class="secondary" disabled>Nächste →</button>
+      <span id="iq-range-label" class="subtle">–</span>
+    </div>
+    <div class="iq-plots">
+      <div><h4>I/Q-Amplitude (8 Bit CU8)</h4><canvas id="iq-waveform" height="200" width="800" role="img" aria-label="I- und Q-Amplitude"></canvas></div>
+      <div><h4>I/Q-Konstellation</h4><canvas id="iq-constellation" height="200" width="400" role="img" aria-label="I/Q-Punktwolke"></canvas></div>
+      <div><h4>FFT-Spektrum (Ausschnitt)</h4><canvas id="iq-spectrum" height="200" width="800" role="img" aria-label="Spektrum der ausgewählten Samples"></canvas></div>
+    </div>
+    <div class="iq-keybits">
+      <div class="panel-head"><h4>FSK-Bitentscheidungen (gesamter erkannter Burst)</h4>
+        <button id="iq-copy-bits" class="secondary" type="button" disabled>Bitfolge kopieren</button>
+      </div>
+      <p id="iq-decoder-status" class="subtle">Nicht geladen.</p>
+      <pre id="iq-bits" class="iq-bits" aria-label="Empfangene FSK-Symbolhypothesen">–</pre>
+      <p class="subtle">Dies sind nicht verifizierte 0/1/?, keine sicher dekodierten Schlüsselcodes. Ohne Symboltakt- und Protokollabgleich sind Bitgrenzen unsicher.</p>
+    </div>
+    <p class="subtle">Die lokalen Dateien liegen nur auf dem Pi mit privaten Dateirechten im Ordner <code>~/.local/share/keyrfmonitor/iq-traces/</code>. Standardscans bleiben Metadaten-only; keine HF-Aussendung.</p>
+  </section>
   <section class="panel events"><div class="panel-head"><h3>Letzte Messereignisse</h3><span class="subtle">Nur Metadaten</span></div>
     <div class="table-scroll"><table><thead><tr><th>Zeit (lokal)</th><th>Quelle</th><th>Typ</th><th>Dauer / Abstand</th><th>Pegelanstieg</th><th>SNR</th></tr></thead><tbody id="event-body"><tr><td colspan="6" class="empty">Noch keine Ereignisse</td></tr></tbody></table></div>
   </section>
-  <footer>MB-RF-Scan 0.7.0 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
+  <footer>MB-RF-Scan 0.8.0 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
 </div>
 </body>
 </html>

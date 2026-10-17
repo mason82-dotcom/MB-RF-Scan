@@ -7,11 +7,14 @@ import tempfile
 import threading
 import unittest
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from unittest.mock import patch
 
 from keyrfmonitor import server
 from keyrfmonitor.storage import EventStore
+from keyrfmonitor.iq_trace import TraceArchive
+from keyrfmonitor.dsp import RFConfig
+import re
 
 
 class SummaryHTTPTests(unittest.TestCase):
@@ -163,6 +166,61 @@ class SummaryHTTPTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as missing:
             urlopen(self.base + "/api/session-detail?id=999999&bucket=5", timeout=3)
         self.assertEqual(missing.exception.code, 404)
+
+    def test_iq_apis_are_available_without_token_on_loopback(self):
+        archive = TraceArchive(self.db.parent / "iq-traces")
+        config = RFConfig()
+        raw = b"\x70\x90" * (config.samples_per_frame * 2)
+        event = {
+            "kind": "burst", "at": datetime.now(timezone.utc).isoformat(),
+            "start_s": .001, "end_s": .015, "duration_ms": 14.,
+            "peak_snr_db": 25., "peak_rise_db": 18.,
+        }
+        trace = archive.save(raw, event, config, 0)
+        self.assertIsNotNone(trace)
+        identifier = trace["id"]
+        with urlopen(self.base + "/api/iq/traces", timeout=4) as response:
+            self.assertEqual(response.status, 200)
+            inventory = json.load(response)
+        self.assertEqual(len(inventory["traces"]), 1)
+        self.assertEqual(inventory["traces"][0]["id"], identifier)
+        with urlopen(self.base + "/api/iq/trace?id=" + identifier, timeout=4) as response:
+            meta = json.load(response)["trace"]
+        self.assertFalse(meta["decoder"]["verified"])
+        self.assertEqual(meta["sample_count"], len(raw) // 2)
+        with urlopen(
+                self.base + "/api/iq/samples?id=" + identifier
+                + "&start=0&count=512", timeout=4) as response:
+            page = json.load(response)
+        self.assertEqual(page["count"], 512)
+        self.assertEqual(page["i"], [0x70]*512)
+        self.assertEqual(page["q"], [0x90]*512)
+        self.assertTrue(page["spectrum"])
+
+        for query in (
+            "/api/iq/trace?id=../../passwd",
+            "/api/iq/samples?id="+identifier+"&start=0&count=9999999",
+            "/api/iq/samples?id="+identifier+"&start=-1&count=512",
+            "/api/iq/samples?id="+identifier+"&start=0&count=512&extra=1",
+        ):
+            with self.subTest(bad=query), self.assertRaises(HTTPError) as err:
+                urlopen(self.base + query, timeout=4)
+            self.assertEqual(err.exception.code, 400)
+        with self.assertRaises(HTTPError) as missing:
+            urlopen(self.base + "/api/iq/trace?id="+"0"*32, timeout=4)
+        self.assertEqual(missing.exception.code, 404)
+
+    def test_untrusted_http_host_header_is_rejected(self):
+        with self.assertRaises(HTTPError) as raised:
+            urlopen(Request(self.base + "/api/status",
+                            headers={"Host": "untrusted.example"}), timeout=4)
+        self.assertEqual(raised.exception.code, 403)
+
+    def test_csrf_protection_for_web_writes_remains_enabled(self):
+        with self.assertRaises(HTTPError) as raised:
+            urlopen(Request(self.base + "/api/stop", data=b"",
+                            method="POST"), timeout=4)
+        self.assertEqual(raised.exception.code, 403)
 
 
 if __name__ == "__main__":

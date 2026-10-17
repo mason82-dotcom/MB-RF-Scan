@@ -271,3 +271,63 @@ Telegramm- oder Schlüsselbits werden nicht über den Endpunkt ausgegeben.
 Im Dashboard kann die Sitzung mit einem Auswahlmenü geändert werden.
 Auch diese Detailansicht ist ausschließlich lesend; sie stoppt weder
 `dump1090.service` noch startet sie einen RTL-SDR-Scan.
+
+## v0.8.0: echte I/Q-Signale und unverifizierte FSK-Bitansicht (Opt-in)
+
+Die normale Erfassung `keyrfmonitor scan --seconds 20` bleibt bei
+**Metadaten ohne IQ-Aufzeichnung**. Nur der bewusst gestartete Befehl
+
+```bash
+cd ~/Projekte/MB-RF-Scan
+/usr/bin/python3 -m keyrfmonitor scan --seconds 20 --iq
+```
+
+speichert die erkannten **echten RTL-SDR-Burst-Fenster** inklusive etwas
+Vor- und Nachlauf als vollständige 8-Bit-I/Q-Samples (CU8). Die Daten
+werden unter `~/.local/share/keyrfmonitor/iq-traces/` als private
+`*.cu8`-Binärdateien und `*.json`-Metadaten mit Berechtigungen
+0600 in einem Verzeichnis mit 0700 gespeichert. Sie können sensible
+Funksignale enthalten: **nicht öffentlich hochladen oder teilen**.
+
+Die Browseransicht ist ohne zusätzliche Tokenabfrage im ausdrücklich
+freigegebenen Heimnetz `192.168.178.0/24` über
+`http://192.168.178.63:8890` verfügbar. Der Server ist ausschließlich
+an `127.0.0.1` und, nach bewusster Freischaltung, an
+`192.168.178.63` gebunden. Anfragen anderer Quellnetze und mit
+unerwarteten Host-Headern werden abgewiesen. Der Zugriff ist
+**HTTP ohne TLS oder Benutzeranmeldung**; daher keine Portweiterleitung
+ins Internet konfigurieren und das Heimnetz nur mit vertrauenswürdigen
+Geräten nutzen. Schreibende Webaktionen bleiben durch das bestehende
+CSRF-Sitzungstoken geschützt. Der Benutzer kann sämtliche Samples einer
+Aufnahme seitenweise (512/2048/8192 Samples) im I/Q-Amplitudenplot,
+Konstellationsdiagramm und FFT-Spektrum ansehen. Zusätzlich wird pro
+erkanntem Burst eine auf 2.000 Baud basierende FSK-**Bithypothese**
+angezeigt (`0`, `1`, `?` für unsichere Entscheidungen). Ohne
+verifizierten Symboltakt, Präambel-/Rahmenabgleich und Protokollkenntnis
+entsprechen diese Entscheidungen **nicht zwingend dem tatsächlichen
+Telegramm**. Nicht alle möglichen Modulationen werden unterstützt.
+
+Die Erfassung bleibt bewusst begrenzt: 20–300 s Scandauer, höchstens
+48 Burst-Aufnahmen pro Scan, höchstens 128 Dateien bzw. 64 MiB privates
+Archiv, und mindestens 128 MiB freier Speicher als Reserve. Es erfolgt
+**keine automatische Löschung** alter Aufnahmen. Bei vollem Archiv
+werden weitere Aufnahmen ausgelassen und im Terminal als übersprungen
+gezählt. Bereits vorhandene Aufnahmen bleiben verfügbar.
+
+Keine Funkübertragung, keine Replay-Funktion und keine Fernbedienung
+der privilegierten ADS-B-Umschaltung aus dem Browser.
+
+### Zugriff auf dem Raspberry Pi 5 für das Heimnetz aktivieren
+
+Einmalig auf dem Pi: `bash scripts/pi/enable-lan-dashboard.sh`.
+Das Skript prüft die lokale IP `192.168.178.63` und aktives ADS-B,
+legt eine systemd-Benutzer-Drop-in-Datei an und startet nur den
+Webdashboard-Dienst neu. Die Listener bleiben auf den exakten
+IP-Adressen `127.0.0.1:8890` und `192.168.178.63:8890`.
+Der GitHub-Pi-Synchronisierungstimer kann weiterhin über Loopback
+`/api/status` prüfen. Bei einem fehlerhaften Start wird die
+Drop-in-Konfiguration automatisch zurückgesetzt. **Keine Portfreigabe am
+Router einrichten.** Ein früher eventuell angelegtes
+`iq-access.token` wird nicht mehr benötigt; es wird jedoch nicht
+automatisch gelöscht, damit bestehende private Dateien nicht
+ungefragt verändert werden.

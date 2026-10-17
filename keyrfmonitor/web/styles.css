@@ -71,3 +71,23 @@
 .detail-histogram-fill{display:block;height:100%;background:#6bbecf;border-radius:8px}
 #session-detail-warning{margin-top:12px;line-height:1.5}
 @media(max-width:680px){.detail-distributions{grid-template-columns:1fr;gap:14px}.detail-summary strong{font-size:16px}.detail-head{flex-direction:column}}
+
+/* v0.8 explicit, receive-only IQ and tentative FSK bits */
+.iq-lab{margin-top:13px}.iq-lab>.info{margin:8px 0 14px;padding:0;border:0}
+.iq-controls{display:flex;flex-wrap:wrap;align-items:end;gap:14px;margin:22px 0 12px}
+.iq-controls label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted)}
+.iq-controls select{background:#1b2a3d;color:var(--fg);border:1px solid #405872;border-radius:8px;padding:10px 12px;max-width:min(460px,88vw)}
+.iq-trace-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:13px;margin:14px 0}
+.iq-trace-stats>div{display:flex;flex-direction:column;border-left:2px solid #365c71;padding-left:10px;min-width:0}
+.iq-trace-stats span{font-size:11px;color:var(--muted)}.iq-trace-stats strong{font-size:17px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.iq-pager{display:flex;align-items:center;gap:12px;margin:22px 0;flex-wrap:wrap}
+.iq-pager input[type=range]{flex:1;min-width:180px;accent-color:#6cc4d4}
+.iq-plots{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.iq-plots>div{border:1px solid #2e4156;padding:13px;border-radius:10px;min-width:0}
+.iq-plots>div:first-child,.iq-plots>div:last-child{grid-column:1/-1}
+.iq-plots h4{font-size:13px;margin:0 0 10px}
+.iq-plots canvas{width:100%;height:auto;border-radius:8px;max-height:250px}
+.iq-keybits{margin:19px 0 10px;border-top:1px solid var(--border);padding-top:15px}
+.iq-keybits .panel-head{margin-bottom:10px}.iq-keybits h4{font-size:14px;margin:0}
+.iq-bits{font:12px/1.8 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;color:#c8f5e4;padding:14px;background:#0c1724;border:1px solid #2b4560;border-radius:10px;max-height:220px;overflow:auto}
+@media(max-width:740px){.iq-trace-stats{grid-template-columns:repeat(2,1fr)}.iq-plots{grid-template-columns:1fr}}

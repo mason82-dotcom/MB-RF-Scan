@@ -1,8 +1,10 @@
-"""Local-only dashboard: passive receiver and isolated synthetic-code lab."""
+"""Loopback + explicitly configured home-LAN passive RF dashboard."""
 from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import ipaddress
+import threading
 from pathlib import Path
 import secrets
 from urllib.parse import parse_qs, urlsplit
@@ -12,19 +14,42 @@ from .hardware.cc1101_sim import CC1101Simulator
 from .hardware.sources import available_sources
 from .receiver import Monitor
 from .storage import EventStore
+from .iq_trace import TraceArchive
 
 WEB = Path(__file__).resolve().parent / "web"
 
 
-def serve(host: str = "127.0.0.1", port: int = 8765, db_path: str | None = None):
-    if host not in ("127.0.0.1", "::1", "localhost"):
-        raise ValueError("Only loopback binding is permitted (no LAN listener without authentication)")
+LAN_IP = "192.168.178.63"
+LAN_CLIENTS = ipaddress.ip_network("192.168.178.0/24")
+
+
+def client_allowed(address: str) -> bool:
+    """Allow direct local clients and only the specified local IPv4 subnet."""
+    try:
+        peer = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return peer.is_loopback or (
+        isinstance(peer, ipaddress.IPv4Address) and peer in LAN_CLIENTS
+    )
+
+
+def serve(host: str = "127.0.0.1", port: int = 8765,
+          db_path: str | None = None, *, lan_host: str | None = None):
+    # Two explicitly bound listeners, never 0.0.0.0 / wildcard.
+    if host not in ("127.0.0.1", "localhost"):
+        raise ValueError("Loopback host required; use --lan-host for LAN access")
+    if lan_host is not None and lan_host != LAN_IP:
+        raise ValueError("LAN listener is restricted to 192.168.178.63")
+    if type(port) is not int or not 0 <= port <= 65535:
+        raise ValueError("Invalid listening port")
     db_path = db_path or str(Path.home() / ".local/share/keyrfmonitor/events.sqlite3")
     store = EventStore(db_path)
     monitor = Monitor(store)
     lab = LabStore(Path(db_path).parent / "synthetic_lab.sqlite3")
     simulator = CC1101Simulator(store.insert)
     csrf = secrets.token_urlsafe(32)
+    trace_archive = TraceArchive(Path(db_path).parent / 'iq-traces')
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -47,7 +72,22 @@ def serve(host: str = "127.0.0.1", port: int = 8765, db_path: str | None = None)
             self._write(json.dumps(payload, ensure_ascii=False, allow_nan=False).encode(),
                         "application/json; charset=utf-8", status)
 
+        def _network_allowed(self) -> bool:
+            peer = self.client_address[0]
+            # Block unexpected source subnets even if a router forwards traffic
+            # to the explicitly bound LAN address. Host check prevents rebinding.
+            hostname = (self.headers.get("Host") or "").split(":", 1)[0].lower()
+            if not client_allowed(peer):
+                self._json({"message": "Zugriff nur aus 192.168.178.0/24 oder lokal"}, 403)
+                return False
+            if hostname not in ("127.0.0.1", "localhost", LAN_IP):
+                self._json({"message": "Ungültiger Host"}, 403)
+                return False
+            return True
+
         def do_GET(self):
+            if not self._network_allowed():
+                return
             if self.path in ("/", "/index.html"):
                 html = (WEB / "index.html").read_text(encoding="utf-8")
                 self._write(html.replace("__RF_CSRF_TOKEN__", csrf).encode(),
@@ -93,6 +133,35 @@ def serve(host: str = "127.0.0.1", port: int = 8765, db_path: str | None = None)
                     self._json(store.summary(hours=hours))
                 except (ValueError, OverflowError):
                     self._json({"message": "Zeitfenster: 6, 24 oder 168 Stunden."}, 400)
+            elif self.path == "/api/iq/traces":
+                self._json({"traces": trace_archive.list_recent(),
+                            "capture_mode": "explicit_cli_only", "tx_enabled": False})
+            elif urlsplit(self.path).path == "/api/iq/trace":
+                try:
+                    query = parse_qs(urlsplit(self.path).query,
+                                     keep_blank_values=True, strict_parsing=True)
+                    if set(query) != {"id"} or len(query["id"]) != 1:
+                        raise ValueError("Ungültige Trace-Parameter")
+                    entry = trace_archive.read(query["id"][0])
+                    self._json({"trace": entry}, 200) if entry else self._json(
+                        {"message": "Trace nicht gefunden"}, 404)
+                except (ValueError, OverflowError):
+                    self._json({"message": "Ungültige Trace-ID"}, 400)
+            elif urlsplit(self.path).path == "/api/iq/samples":
+                try:
+                    query = parse_qs(urlsplit(self.path).query,
+                                     keep_blank_values=True, strict_parsing=True)
+                    if set(query) != {"id", "start", "count"} or any(len(v) != 1 for v in query.values()):
+                        raise ValueError("Ungültige Parameter")
+                    start_txt, count_txt = query["start"][0], query["count"][0]
+                    if not (start_txt.isascii() and start_txt.isdecimal()
+                            and count_txt.isascii() and count_txt.isdecimal()):
+                        raise ValueError("Ungültige Zahlen")
+                    page = trace_archive.sample_page(query["id"][0], int(start_txt), int(count_txt))
+                    self._json(page, 200) if page else self._json(
+                        {"message": "Trace nicht gefunden"}, 404)
+                except (ValueError, OverflowError):
+                    self._json({"message": "Erwartet: id, start und count=512|2048|8192"}, 400)
             elif self.path == "/api/sources":
                 self._json({"sources": available_sources()})
             elif self.path == "/api/cc1101/status":
@@ -103,6 +172,8 @@ def serve(host: str = "127.0.0.1", port: int = 8765, db_path: str | None = None)
                 self._json({"error": "Not found"}, 404)
 
         def do_POST(self):
+            if not self._network_allowed():
+                return
             if self.headers.get("X-RFMonitor-Token") != csrf:
                 self._json({"message": "Ungültiges Zugriffstoken"}, 403)
                 return
@@ -145,12 +216,32 @@ def serve(host: str = "127.0.0.1", port: int = 8765, db_path: str | None = None)
                 return
             self._json({"message": message}, 200 if ok else 409)
 
-    httpd = ThreadingHTTPServer((host, port), Handler)
-    print(f"KeyRFMonitor: http://{host}:{port} (lokal, keine SDR-Autostartfunktion)", flush=True)
+    httpd = None
+    lan_httpd = None
+    lan_thread = None
     try:
+        httpd = ThreadingHTTPServer((host, port), Handler)
+        if lan_host:
+            # If the LAN address is unavailable, fail without opening a wildcard
+            # socket or accidentally closing only one of the listeners.
+            lan_httpd = ThreadingHTTPServer((lan_host, port), Handler)
+            lan_thread = threading.Thread(
+                target=lan_httpd.serve_forever, kwargs={"poll_interval": 0.25},
+                name="keyrfmonitor-lan-http", daemon=True)
+            lan_thread.start()
+            print(f"MB-RF-Scan LAN: http://{lan_host}:{port} "
+                  "(Quellnetz 192.168.178.0/24, nur HTTP)", flush=True)
+        print(f"KeyRFMonitor: http://{host}:{port} "
+              "(lokal, keine SDR-Autostartfunktion)", flush=True)
         httpd.serve_forever(poll_interval=0.25)
     finally:
-        httpd.server_close()
+        if lan_httpd is not None:
+            lan_httpd.shutdown()
+            lan_httpd.server_close()
+        if lan_thread is not None:
+            lan_thread.join(timeout=3)
+        if httpd is not None:
+            httpd.server_close()
         simulator.close()
         monitor.close()
         store.close()

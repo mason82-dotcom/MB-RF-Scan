@@ -1,5 +1,23 @@
 # Änderungsprotokoll
 
+## 0.8.0 LAN-Zugriff ohne IQ-Token (192.168.178.63)
+
+- Nach ausdrücklicher Freischaltung zwei IP-gebundene Weblistener `127.0.0.1:8890` und `192.168.178.63:8890`; niemals `0.0.0.0`.
+- Zugriff ohne separate IQ-Tokenabfrage; HTTP-GETs/POSTs werden auf Quellnetz `192.168.178.0/24` und Loopback sowie gültigen Host-Header beschränkt.
+- Schreibaktionen behalten CSRF-Token; keine Änderung am RTL-SDR-/ADS-B-Watchdog.
+- Einmaliges sicheres Einrichten mittels `scripts/pi/enable-lan-dashboard.sh` mit Dienst-Rollback bei Fehlern.
+- **HTTP im Heimnetz ohne Verschlüsselung:** Alle vertrauenswürdigen LAN-Clients können IQ/Bits lesen, keine Router-Portweiterleitung vorsehen.
+
+
+## 0.8.0 – Opt-in-Erfassung echter I/Q-Burst-Signale und FSK-Bit-Hypothesen (2026-10-17)
+
+- `scan --iq` aktiviert lokal und ausdrücklich begrenzte CU8-I/Q-Aufzeichnung real empfangener Burst-Signale; normale Scans speichern weiterhin nur Metadaten.
+- Phasendiskriminator für vorläufige 2.000-Bd-FSK-Bitentscheidungen (0/1/?) mit Symbolkonfidenz und unbekannter Protokollgültigkeit.
+- Private Dateiablage mit 0600/0700, maximal 48 Aufnahmen je Scan, Archivlimit 64 MiB / 128 Dateien und 128 MiB freie Speicherreserve.
+- Token-geschützte, nur auf Loopback erreichbare IQ-API; Darstellung der vollständigen Samplefolge in seitenweisen I/Q-, Konstellations- und FFT-Grafiken.
+- Weiterhin keine TX-/Replay-Funktion und keine Erweiterung der ADS-B-Root-Berechtigungen oder Scanlaufzeit.
+
+
 ## 0.7.0 – Detaillierte Analyse einzelner Scans (2026-10-17)
 
 - Neue schreibgeschützte API `GET /api/session-detail?id=N&bucket=5|10` für reine Ereignis-Metadaten aus einer ausgewählten Sitzung.
