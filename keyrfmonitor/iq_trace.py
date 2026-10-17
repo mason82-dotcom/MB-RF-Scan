@@ -23,6 +23,7 @@ import numpy as np
 from .dsp import RFConfig
 from .bit_analysis import interpret_symbols, validate_options
 from .iq_envelope import analyze_cu8_envelope
+from .envelope_sensitivity import summarize_threshold_sensitivity
 
 TRACE_NAME = re.compile(r"^[0-9a-f]{32}$")
 MAX_CAPTURES_PER_SCAN = 48
@@ -295,6 +296,9 @@ class TraceArchive:
         if len(raw) != total * 2:
             raise ValueError("Incomplete archived CU8 file")
         envelope = analyze_cu8_envelope(raw, rate, first, last)
+        # Preserve the original threshold and edge diagnosis unchanged;
+        # attach a separate, explicitly unverified sensitivity assessment.
+        envelope["threshold_sensitivity"] = summarize_threshold_sensitivity(envelope)
         envelope.update({
             "id": self._id(trace_id),
             "event_at": meta["event_at"],
