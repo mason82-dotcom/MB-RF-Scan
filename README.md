@@ -331,3 +331,34 @@ Router einrichten.** Ein früher eventuell angelegtes
 `iq-access.token` wird nicht mehr benötigt; es wird jedoch nicht
 automatisch gelöscht, damit bestehende private Dateien nicht
 ungefragt verändert werden.
+
+## v0.8.1: IQ und FSK-Bitansicht automatisch bei jedem manuellen Scan
+
+Der Terminalbefehl `/usr/bin/python3 -m keyrfmonitor scan --seconds 20`
+zeichnet bei jedem **ausdrücklich gestarteten Scan** die erkannten
+echten RTL-SDR-Burst-Fenster (CU8) und die unverifizierten
+2.000-Bd-FSK-Bitentscheidungen standardmäßig mit auf.
+Die ältere Option `--iq` bleibt kompatibel, ist aber nicht mehr
+erforderlich. Für einen reinen Metadaten-Scan steht `--no-iq` bereit.
+
+Auch eine bewusst gestartete Browser-Messung verwendet automatisch
+die begrenzte I/Q-Burstaufzeichnung, sofern der SDR zuvor regulär
+verfügbar ist. **Die Webseite stoppt ADS-B niemals automatisch.**
+Die Einstellungen für Scandauer (20–300 Sekunden im Terminal),
+Archivgröße (64 MiB / 128 Dateien), verbleibenden Speicherplatz
+(mindestens 128 MiB Reserve) und maximal 48 Aufnahmen je Scan
+bleiben unverändert.
+
+Die I/Q- und Bitansicht ist im Dashboard dauerhaft sichtbar.
+Sie fragt neue Aufnahmen ungefähr alle vier Sekunden ab und zeigt
+bei neuen gespeicherten Burstfenstern automatisch die aktuelle Aufnahme,
+ohne die komplette Sample-Datei in den Browser zu laden.
+Wenn nichts Neues gespeichert wurde, werden bereits angezeigte
+Grafiken, der Sample-Ausschnitt und eine manuell gewählte ältere
+Aufnahme nicht zurückgesetzt. Kein neuer SDR-Scan wird automatisch
+gestartet.
+
+Beim erstmaligen Laden einer leeren Datenbank ist die I/Q-Ansicht
+entsprechend leer. **Vor v0.8 vorhandene Burst-Metadaten enthalten
+keine I/Q-Samples** und können nicht rückwirkend um Bitfolgen
+ergänzt werden.

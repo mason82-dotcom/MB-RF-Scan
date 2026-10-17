@@ -1,7 +1,7 @@
 """Explicit, bounded scan session with fail-safe restoration of dump1090.
 
-Only invoked from the interactive CLI. No web endpoint or autostart; raw
-CU8 IQ is saved exclusively when the operator passes --iq.
+Only invoked from the interactive CLI. No web endpoint or autostart; true
+CU8-IQ is saved for explicitly started scans by default unless --no-iq is used.
 The operator authorizes a single scan with sudo -v. A root-owned transient systemd
 watchdog is armed *before* ADS-B is stopped, so SIGKILL of this process cannot
 leave ADS-B off indefinitely. The watchdog only ever starts dump1090.service.
@@ -89,7 +89,7 @@ class ADSBControl:
 
 def run_scan(seconds: int = 60, *, control: ADSBControl | None = None,
              database: str | Path | None = None,
-             capture_iq: bool = False) -> int:
+             capture_iq: bool = True) -> int:
     """Pause active ADS-B, receive metadata for bounded time, then restore it.
 
     Refuses to manage service if it was not active beforehand. Does not touch
@@ -129,7 +129,8 @@ def run_scan(seconds: int = 60, *, control: ADSBControl | None = None,
         store = EventStore(store_path)
         session_id = store.start_session(seconds)
         if capture_iq:
-            # Opt-in only: retain finite burst windows, not an open-ended stream.
+            # Explicit scan implies IQ capture unless --no-iq was supplied.
+            # Retain bounded burst windows, never an open-ended IQ stream.
             config = RFConfig()
             archive = TraceArchive(store_path.parent / "iq-traces")
             trace = TraceCollector(archive, config)
@@ -143,7 +144,7 @@ def run_scan(seconds: int = 60, *, control: ADSBControl | None = None,
             raise ScanError(msg)
         print(f"KeyRFMonitor: Scan läuft {seconds} s; ADS-B wird danach automatisch wieder gestartet.", flush=True)
         if capture_iq:
-            print("OPT-IN IQ: Echte CU8-Bursts und unbestätigte FSK-Bithypothesen "
+            print("IQ-Standard: Echte CU8-Bursts und unbestätigte FSK-Bithypothesen "
                   "werden PRIVAT gespeichert; keine HF-Aussendung oder Replay.", flush=True)
             print("Begrenzung: max. 48 Burst-Traces je Scan, max. 64 MiB Archiv "
                   "und 128 MiB freier Speicher als Reserve.", flush=True)

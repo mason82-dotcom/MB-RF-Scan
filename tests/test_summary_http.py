@@ -221,6 +221,13 @@ class SummaryHTTPTests(unittest.TestCase):
             urlopen(Request(self.base + "/api/stop", data=b"",
                             method="POST"), timeout=4)
         self.assertEqual(raised.exception.code, 403)
+    def test_web_listener_prepares_passive_iq_capture_by_default(self):
+        with urlopen(self.base + "/api/status", timeout=3) as response:
+            status = json.load(response)
+        self.assertTrue(status["iq_trace_enabled"])
+        self.assertEqual(status["iq_trace_saved"], 0)
+        self.assertEqual(status["state"], "stopped")
+
 
 
 if __name__ == "__main__":

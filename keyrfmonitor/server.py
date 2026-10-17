@@ -45,11 +45,17 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
         raise ValueError("Invalid listening port")
     db_path = db_path or str(Path.home() / ".local/share/keyrfmonitor/events.sqlite3")
     store = EventStore(db_path)
-    monitor = Monitor(store)
+    trace_archive = TraceArchive(Path(db_path).parent / "iq-traces")
+    # An explicitly initiated browser scan also captures bounded real I/Q.
+    # It still refuses to start while dump1090.service owns the SDR.
+    from .dsp import RFConfig
+    from .iq_trace import TraceCollector
+    rf_config = RFConfig()
+    monitor = Monitor(store, config=rf_config,
+                      trace=TraceCollector(trace_archive, rf_config))
     lab = LabStore(Path(db_path).parent / "synthetic_lab.sqlite3")
     simulator = CC1101Simulator(store.insert)
     csrf = secrets.token_urlsafe(32)
-    trace_archive = TraceArchive(Path(db_path).parent / 'iq-traces')
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):

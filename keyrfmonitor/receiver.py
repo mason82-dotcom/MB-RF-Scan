@@ -77,6 +77,8 @@ class Monitor:
                 return False, "Ein anderer KeyRFMonitor-Prozess verwendet den RTL-SDR bereits."
             self.last_error = None
             self.stderr_tail.clear()
+            if self.trace is not None:
+                self.trace.reset_scan()
             try:
                 self.detector = PassiveDetector(self.config, on_event=self.store.insert)
             except Exception:
