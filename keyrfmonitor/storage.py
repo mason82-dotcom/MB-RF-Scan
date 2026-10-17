@@ -69,7 +69,30 @@ class EventStore:
           burst_count INTEGER NOT NULL DEFAULT 0 CHECK(burst_count >= 0),
           pair_count INTEGER NOT NULL DEFAULT 0 CHECK(pair_count >= 0)
         )""")
+        # Non-destructive migration of real v0.5 databases, including session #1.
+        columns = {col[1] for col in self.db.execute("PRAGMA table_info(scan_sessions)")}
+        analytics_columns = {
+            "avg_duration_ms": "REAL",
+            "min_duration_ms": "REAL",
+            "max_duration_ms": "REAL",
+            "avg_snr_db": "REAL",
+            "peak_snr_db": "REAL",
+            "avg_rise_db": "REAL",
+            "peak_rise_db": "REAL",
+            "stats_version": "INTEGER NOT NULL DEFAULT 0",
+        }
+        for column, definition in analytics_columns.items():
+            if column not in columns:
+                self.db.execute(f"ALTER TABLE scan_sessions ADD COLUMN {column} {definition}")
+        # Only IDs are correlated; no additional RF payload or raw samples.
+        self.db.execute("""CREATE TABLE IF NOT EXISTS scan_session_events (
+            session_id INTEGER NOT NULL,
+            event_id INTEGER NOT NULL PRIMARY KEY
+        )""")
+        self.db.execute("""CREATE INDEX IF NOT EXISTS idx_scan_events_session
+                           ON scan_session_events(session_id)""")
         self.db.commit()
+        self._active_session_id: int | None = None
 
     def insert(self, event: dict) -> None:
         if event.get("kind") not in ("burst", "pair"):
@@ -90,7 +113,12 @@ class EventStore:
         sql = ("INSERT INTO events (" + ",".join(fields) + ") VALUES (" +
                ",".join("?" for _ in fields) + ")")
         with self.lock:
-            self.db.execute(sql, [event[k] for k in fields])
+            cursor = self.db.execute(sql, [event[k] for k in fields])
+            if (self._active_session_id is not None
+                    and event["source"] == "rtl_sdr" and not event["simulated"]):
+                self.db.execute(
+                    "INSERT INTO scan_session_events(session_id,event_id) VALUES (?,?)",
+                    (self._active_session_id, cursor.lastrowid))
             self.db.commit()
 
     def recent(self, limit: int = 60) -> list[dict]:
@@ -153,10 +181,13 @@ class EventStore:
             raise ValueError("Scan session duration outside 20..300 seconds")
         timestamp = datetime.now(timezone.utc).isoformat()
         with self.lock:
+            if self._active_session_id is not None:
+                raise ValueError("A CLI scan is already associated with this store")
             cursor = self.db.execute(
                 "INSERT INTO scan_sessions(started_at,planned_seconds,result,restoration) "
                 "VALUES (?,?, 'running','pending')", (timestamp, planned_seconds))
             self.db.commit()
+            self._active_session_id = cursor.lastrowid
             return cursor.lastrowid
 
     def finish_session(self, session_id: int, *, result: str, restoration: str,
@@ -175,15 +206,36 @@ class EventStore:
             raise ValueError("Invalid event counts")
         ended_at = datetime.now(timezone.utc).isoformat()
         with self.lock:
+            # Explicit association prevents simulator events and other sessions
+            # from contaminating aggregates, even with concurrent SQLite writers.
+            existing = self.db.execute(
+                "SELECT result FROM scan_sessions WHERE id=?", (session_id,)).fetchone()
+            if existing is None or existing[0] != "running":
+                raise ValueError("Session missing or already finalized")
+            aggregate = self.db.execute("""
+                SELECT AVG(e.duration_ms), MIN(e.duration_ms), MAX(e.duration_ms),
+                       AVG(e.peak_snr_db), MAX(e.peak_snr_db),
+                       AVG(e.peak_rise_db), MAX(e.peak_rise_db)
+                FROM scan_session_events a JOIN events e ON e.id=a.event_id
+                WHERE a.session_id=? AND e.kind='burst'
+                  AND e.source='rtl_sdr' AND e.simulated=0
+            """, (session_id,)).fetchone()
+            rounded = [round(value, 1) if value is not None else None
+                       for value in aggregate]
             cursor = self.db.execute(
                 """UPDATE scan_sessions SET finished_at=?, result=?, restoration=?,
-                   burst_count=?, pair_count=?
+                   burst_count=?, pair_count=?, avg_duration_ms=?, min_duration_ms=?,
+                   max_duration_ms=?, avg_snr_db=?, peak_snr_db=?, avg_rise_db=?,
+                   peak_rise_db=?, stats_version=1
                    WHERE id=? AND result='running'""",
-                (ended_at, result, restoration, burst_count, pair_count, session_id))
+                (ended_at, result, restoration, burst_count, pair_count,
+                 *rounded, session_id))
             if cursor.rowcount != 1:
                 self.db.rollback()
                 raise ValueError("Session missing or already finalized")
             self.db.commit()
+            if self._active_session_id == session_id:
+                self._active_session_id = None
 
     def recent_sessions(self, limit: int = 30, *, now: datetime | None = None) -> list[dict]:
         """Return bounded, read-only scan summaries; an unfinished row stays unverified.
@@ -200,7 +252,9 @@ class EventStore:
         with self.lock:
             cursor = self.db.execute(
                 """SELECT id,started_at,finished_at,planned_seconds,result,restoration,
-                          burst_count,pair_count FROM scan_sessions
+                          burst_count,pair_count,avg_duration_ms,min_duration_ms,
+                          max_duration_ms,avg_snr_db,peak_snr_db,avg_rise_db,
+                          peak_rise_db,stats_version FROM scan_sessions
                    ORDER BY id DESC LIMIT ?""", (limit,))
             fields = [field[0] for field in cursor.description]
             rows = [dict(zip(fields, row)) for row in cursor.fetchall()]
@@ -210,6 +264,20 @@ class EventStore:
             item["elapsed_seconds"] = max(0, round((end - start).total_seconds(), 1))
             item["stale"] = (item["result"] == "running" and
                              item["elapsed_seconds"] > item["planned_seconds"] + 90)
+            item["metrics_available"] = item.pop("stats_version") > 0
+            notices = []
+            if item["restoration"] == "failed":
+                notices.append("adsb_restore_failed")
+            elif item["stale"]:
+                notices.append("unfinished_scan")
+            if item["result"] == "completed" and item["burst_count"] == 0:
+                notices.append("no_bursts")
+            elif item["result"] == "completed" and item["burst_count"] >= 2 and item["pair_count"] == 0:
+                notices.append("no_pairs")
+            if (item["metrics_available"] and item["burst_count"] > 0
+                    and item["avg_snr_db"] is None):
+                notices.append("snr_missing")
+            item["diagnostics"] = notices
         return rows
 
     def close(self) -> None:
