@@ -21,3 +21,8 @@
 .history-legend span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
 .history-legend .legend-burst::before{background:#66cad4}.history-legend .legend-pair::before{background:#e4b574}.history-legend .subtle::before{display:none}
 @media(max-width:680px){.history-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.history-head{flex-direction:column}}
+
+/* v0.5 scan-session audit trail: read-only, hardware-independent */
+.sessions{margin-top:13px}.sessions .panel-head{margin-bottom:10px}.sessions .panel-head>div{display:flex;flex-direction:column;gap:3px}
+.sessions .info{margin:0 0 15px;padding:0;border:0}.sessions td{white-space:nowrap}.sessions td:first-child{white-space:normal;min-width:135px}
+.session-warning td{color:#f0bc86}.sessions .table-scroll{max-height:460px;overflow:auto}

@@ -60,6 +60,8 @@ def serve(host: str = "127.0.0.1", port: int = 8765, db_path: str | None = None)
                 self._json(monitor.status())
             elif self.path == "/api/events":
                 self._json({"events": store.recent()})
+            elif self.path == "/api/sessions":
+                self._json({"sessions": store.recent_sessions(), "source": "cli_scan"})
             elif urlsplit(self.path).path == "/api/summary":
                 try:
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True,

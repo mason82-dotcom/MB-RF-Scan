@@ -1,5 +1,14 @@
 # Änderungsprotokoll
 
+## 0.5.0 – Protokoll befristeter Scan-Sitzungen (2026-10-17)
+
+- Neue SQLite-Tabelle `scan_sessions` mit automatisch protokolliertem Beginn, Soll-/Ist-Dauer, Ergebnis, Burst- und Paarzahlen sowie separat verifiziertem ADS-B-Wiederherstellungsstatus.
+- Bei SIGKILL oder Stromausfall bleibt der Status unbestätigt; die Root-Wiederherstellungs-Unit ist weiterhin das unabhängige Fail-Safe.
+- Schreibgeschützte API `GET /api/sessions` und Sitzungstabelle im Dashboard.
+- Keine Rückdatierung alter Messungen und keine Verknüpfung mit dekodierten Telegrammdaten, IQ-Aufnahmen oder Schlüsselcodes.
+- Keine Änderung des befristeten Scan-Fensters (20–300 Sekunden), der Privilegien oder des SDR-Exklusivzugriffs.
+
+
 ## 0.4.0 – Live-Diagnose und Verlauf (2026-10-17)
 
 - Schreibgeschützte Statistik-API `/api/summary?hours=6|24|168` mit UTC-Stundenwerten, Burst-/Paarzählern, durchschnittlicher Dauer und SNR.

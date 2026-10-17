@@ -4,6 +4,42 @@ const token = document.querySelector('meta[name="rf-token"]').content;
 const statusText = {stopped:'Gestoppt',starting:'Kalibriert',running:'Empfang aktiv',stopping:'Beendet',error:'Fehler'};
 function fmtTime(s){try{return new Date(s).toLocaleString('de-DE',{dateStyle:'short',timeStyle:'medium'})}catch{return '–'}}
 
+let sessionsLastFetched=0;
+function renderSessions(items){
+ const body=$('session-body');body.replaceChildren();
+ if(!items.length){
+  const tr=document.createElement('tr');const td=document.createElement('td');
+  td.colSpan=6;td.className='empty';td.textContent='Noch keine Scan-Sitzungen protokolliert';
+  tr.append(td);body.append(tr);return;
+ }
+ const states={running:'Läuft / unvollständig',completed:'Beendet',interrupted:'Unterbrochen',error:'Fehler'};
+ const recovery={pending:'Nicht bestätigt',verified:'Ja, geprüft',failed:'Nein / Fehler',not_required:'Nicht erforderlich'};
+ for(const item of items){
+  const tr=document.createElement('tr');
+  const state=item.stale?'Unvollständig – prüfen':states[item.result]||'Unbekannt';
+  const values=[
+   fmtTime(item.started_at),
+   item.planned_seconds+' s / '+(item.finished_at?item.elapsed_seconds+' s':'läuft / offen'),
+   state,
+   recovery[item.restoration]||'Unbekannt',
+   String(item.burst_count),
+   String(item.pair_count),
+  ];
+  for(const value of values){const td=document.createElement('td');td.textContent=value;tr.append(td)}
+  if(item.restoration==='failed'||item.stale)tr.className='session-warning';
+  body.append(tr);
+ }
+}
+async function refreshSessions(){
+ const res=await fetch('/api/sessions',{cache:'no-store'});
+ if(!res.ok)throw Error('HTTP '+res.status);
+ const result=await res.json();
+ renderSessions(result.sessions);
+ $('sessions-error').textContent='';
+ $('sessions-updated').textContent='Aktualisiert '+new Date().toLocaleTimeString('de-DE');
+ sessionsLastFetched=Date.now();
+}
+
 const levelSamples=[];
 let oldState='stopped', historyFetched=0, polling=false;
 function fmtNumber(n,unit){return Number.isFinite(n)?n.toFixed(1)+' '+unit:'–'}
@@ -107,6 +143,9 @@ async function refresh(){
   updateUI(await a.json());renderEvents((await b.json()).events);
   if(Date.now()-historyFetched>8000){
    try{await refreshHistory()}catch(e){$('history-error').textContent='Verlauf nicht erreichbar: '+e.message}
+  }
+  if(Date.now()-sessionsLastFetched>8000){
+   try{await refreshSessions()}catch(e){$('sessions-error').textContent='Sitzungsübersicht nicht erreichbar: '+e.message}
   }
  }catch(e){$('notice').textContent='Backend nicht erreichbar: '+e.message}
  finally{polling=false}
