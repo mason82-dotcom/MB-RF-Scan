@@ -398,3 +398,40 @@ werden nicht automatisch verifiziert. Die angezeigte Hex-Folge
 darf nicht als entschlüsselter oder authentifizierter Schlüsselcode
 verstanden werden. Kein HF-Senden, Replay, Schlüssel-Berechnen
 oder automatisches Aktivieren/Deaktivieren von ADS-B.
+
+## v0.9.1 – Zeitliche Burst-Paaranalyse echter I/Q-Aufnahmen
+
+Aus dem **vorhandenen** privaten Archiv werden bis zu 48 der neuesten
+Burst-Metadaten eingelesen und nach `event_at` chronologisch sortiert;
+die Darstellung „neueste zuerst“ der normalen Aufnahmeliste wird
+dabei bewusst nicht als Tastendruck-Reihenfolge interpretiert.
+
+Die neue rein lesende API `GET /api/iq/pairs` ermittelt disjunkte
+benachbarte Burstpaare mit Startabständen von 400 bis 650 ms (bisherige
+Messreferenz: 513 ms). Sie maximiert zunächst die Anzahl der Paare und
+bevorzugt danach Abstände nahe 513 ms, ohne eine vermeintliche
+Tastenfolge zu erzwingen. Das Dashboard zeigt die Ergebnisse automatisch
+im bestehenden viersekündigen Aktualisierungszyklus:
+
+- Anzahl der berücksichtigten Burstaufnahmen, mögliche Paare und
+  einzelne nicht zugeordnete Aufnahmen.
+- Empfangszeitpunkt, Startabstand, Pause zwischen Burstende und zweitem
+  Burstbeginn, Burstdauern sowie SNR der beiden Burstaufnahmen.
+- Median und Spannweite der Burstdauer; direkte Auswahl beider
+  gespeicherten I/Q-Traces zur weiteren Analyse.
+
+Die bekannten vier kurzen Tastendrücke (`Auf`, `Auf`, `Zu`, `Zu`)
+sind ein **externer Beobachtungshinweis des Bedieners**, aber werden
+nicht automatisch als verifizierte Bit- oder Sendekommandos
+hinterlegt. Die API ordnet keine Tastenfunktion zu, lädt keine
+CU8-Samples, berechnet keine Bitübereinstimmungen und zeigt
+keine Schlüsselcodes. Bei nicht eindeutigen Abständen bleiben
+Aufnahmen ungepaart. Mögliche Überschneidungen von Signalen
+verschiedener Messungen können ohne separate Zuordnung zu einer
+Scan-Sitzung nicht sicher ausgeschlossen werden.
+
+Die Auswertung verändert keine Datei, startet keinen SDR,
+pausiert niemals ADS-B, nutzt ausschließlich die vorhandene
+LAN-Begrenzung auf `192.168.178.0/24` und den Loopback-Zugang
+und erfordert keine zusätzliche Tokenabfrage. Die Daten werden
+weiterhin unverschlüsselt über HTTP im Heimnetz übertragen.
