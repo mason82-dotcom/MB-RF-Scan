@@ -96,6 +96,35 @@ class SummaryHTTPTests(unittest.TestCase):
         self.assertNotIn("key_bits", session)
         self.assertNotIn("iq_data", session)
 
+    def test_v06_analytics_visible_via_read_only_sessions_api(self):
+        store = EventStore(self.db)
+        sid = store.start_session(20)
+        now = datetime.now(timezone.utc).isoformat()
+        store.insert({"kind": "burst", "at": now, "duration_ms": 160,
+                      "peak_snr_db": 32, "peak_rise_db": 18})
+        store.insert({"kind": "burst", "at": now, "duration_ms": 180,
+                      "peak_snr_db": 36, "peak_rise_db": 22})
+        store.insert({"kind": "pair", "at": now, "start_gap_ms": 500})
+        store.insert({"kind": "burst", "at": now, "duration_ms": 120,
+                      "peak_snr_db": 99, "source": "cc1101_sim",
+                      "simulated": True})
+        store.finish_session(sid, result="completed", restoration="verified",
+                             burst_count=2, pair_count=1)
+        store.close()
+        with urlopen(self.base + "/api/sessions", timeout=3) as response:
+            payload = json.load(response)
+            self.assertEqual(response.status, 200)
+        item = payload["sessions"][0]
+        self.assertTrue(item["metrics_available"])
+        self.assertEqual(item["avg_duration_ms"], 170)
+        self.assertEqual(item["avg_snr_db"], 34)
+        self.assertEqual(item["peak_snr_db"], 36)
+        self.assertEqual(item["avg_rise_db"], 20)
+        self.assertEqual(item["burst_count"], 2)
+        self.assertEqual(item["pair_count"], 1)
+        self.assertNotIn("payload", item)
+        self.assertNotIn("raw_iq", item)
+
 
 if __name__ == "__main__":
     unittest.main()
