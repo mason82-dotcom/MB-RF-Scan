@@ -198,3 +198,22 @@ systemctl is-active dump1090.service
 `rtl_test -t` kann bei einem R820T den Hinweis "No E4000 tuner found" ausgeben; das ist kein Nachweis eines Defekts. Ein `usb_claim_interface error -6` bedeutet in der Regel, dass ein anderer Prozess den Stick belegt. Die Startwarnung `[R82XX] PLL not locked!` ist zu protokollieren, wenn die Abstimmung anschließend dennoch funktioniert.
 
 **Hinweis:** Für einen Raspberry Pi auf reinem SSH-Betrieb die Benutzer-Systemd-Unit verwenden. Ein Browser auf einem anderen Gerät benötigt einen SSH-Tunnel oder einen später separat entwickelten, authentifizierten TLS-Zugang. Bitte den Webserver nicht über einen ungeschützten Port-Forward ins LAN/Internet veröffentlichen.
+
+## GitHub-Synchronisierung auf dem Raspberry Pi
+
+Der produktive Quellcode liegt unter `~/Projekte/MB-RF-Scan` auf Branch `main`. Das Dashboard läuft auf `127.0.0.1:8890` (SSH-Tunnel erforderlich, kein offener LAN-Zugang). Die bereits auf GitHub importierte Version v0.3.0 hat 25 lokale Unit-Tests bestanden.
+
+Manuell aktualisieren:
+
+```bash
+cd ~/Projekte/MB-RF-Scan
+bash scripts/pi/sync-from-github.sh
+```
+
+Optional stündlichen, abgesicherten **GitHub → Pi**-Abgleich einrichten:
+
+```bash
+bash scripts/pi/install-sync-timer.sh
+```
+
+Anleitung, Prüfung, Rollback und Deaktivierung: [docs/PI_SYNC.md](docs/PI_SYNC.md). Der Abgleich führt keine SDR-Messungen oder ADS-B-Unterbrechungen aus und pusht keine Messdaten nach GitHub.

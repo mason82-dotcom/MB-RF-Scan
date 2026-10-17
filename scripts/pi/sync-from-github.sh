@@ -4,7 +4,16 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
+# Verhindert parallele Deployments (manuelle Aufrufe und Timer).
+command -v flock >/dev/null || { echo "flock fehlt; Abbruch." >&2; exit 2; }
+mkdir -p "$HOME/.local/share/keyrfmonitor"
+exec 9>"$HOME/.local/share/keyrfmonitor/mb-rf-scan-sync.lock"
+flock -n 9 || { echo "Ein anderer MB-RF-Scan-Abgleich laeuft bereits."; exit 0; }
 [ -d .git ] || { echo "Kein Git-Checkout." >&2; exit 2; }
+case "$(git remote get-url origin)" in
+  https://github.com/mason82-dotcom/MB-RF-Scan.git|git@github.com:mason82-dotcom/MB-RF-Scan.git|ssh://git@github.com/mason82-dotcom/MB-RF-Scan.git) ;;
+  *) echo "Unerwartetes GitHub-Remote; Abbruch." >&2; exit 2 ;;
+esac
 [ "$(git branch --show-current)" = main ] || { echo "Nur main wird synchronisiert." >&2; exit 2; }
 [ -z "$(git status --porcelain)" ] || { echo "Lokale Aenderungen vorhanden: git status pruefen; Abbruch." >&2; exit 2; }
 if ! systemctl is-active --quiet dump1090.service; then

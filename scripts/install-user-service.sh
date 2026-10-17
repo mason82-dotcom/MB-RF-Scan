@@ -11,7 +11,7 @@ After=default.target
 [Service]
 Type=simple
 WorkingDirectory=$ROOT
-ExecStart=/usr/bin/python3 -m keyrfmonitor serve --host 127.0.0.1 --port 8765
+ExecStart=/usr/bin/python3 -m keyrfmonitor serve --host 127.0.0.1 --port 8890
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
@@ -23,5 +23,5 @@ EOF
 systemctl --user daemon-reload
 systemctl --user enable --now keyrfmonitor.service
 systemctl --user --no-pager status keyrfmonitor.service
-printf '\nWeb-UI: http://127.0.0.1:8765 (nur Pi bzw. SSH-Tunnel)\n'
+printf '\nWeb-UI: http://127.0.0.1:8890 (nur Pi bzw. SSH-Tunnel)\n'
 printf 'Der Dienst startet KEINE SDR-Messung automatisch und aendert ADS-B nicht.\n'

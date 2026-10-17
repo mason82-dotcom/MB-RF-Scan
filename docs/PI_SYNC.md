@@ -1,5 +1,7 @@
 # Raspberry Pi 5 ↔ GitHub: MB-RF-Scan synchron halten
 
+> **Aktueller Installationsstand:** Die Erstübernahme wurde am 17.10.2026 auf `main` als Commit `5bd63b8` erfolgreich übertragen; 25 Unit-Tests bestanden. Die produktive Weboberfläche des Pi läuft aus `~/Projekte/MB-RF-Scan` auf `127.0.0.1:8890`, während `dump1090.service` aktiv bleibt. Die nachfolgenden Erstimport-Schritte sind nur für Neuinstallationen erforderlich.
+
 ## 1. Einmaliger Import (Pi → GitHub)
 
 Quelle: `~/Projekte/KeyRFMonitor` (funktionsfähige v0.3.0). Ziel: `~/Projekte/MB-RF-Scan` auf GitHub-`main`. Die beiden Projekte sind ansonsten unabhängig von AeroNexusAdvanced.
@@ -65,3 +67,30 @@ git push origin main
 ```
 
 Keine `git reset --hard`- oder `git clean`-Kommandos auf dem alten KeyRFMonitor-Verzeichnis ausführen. Die Weboberfläche bindet ausschließlich `127.0.0.1:8890`; keinen ungefilterten LAN-Port freigeben.
+
+## 5. Optional: GitHub → Raspberry Pi stündlich automatisch synchronisieren
+
+Die Einrichtung erfolgt **bewusst einmalig am Pi**. Neue Commits auf GitHub-`main` werden dann ungefähr stündlich (mit bis zu fünf Minuten zufälliger Verzögerung) abgerufen. Der Timer startet **keine Funkmessung** und **stoppt dump1090 nicht**. Bei lokalen Änderungen, einem laufenden ADS-B-Pausenfenster oder divergierender Git-Historie wird der Abgleich abgebrochen; damit gibt es keinen erzwungenen Merge. Bei fehlschlagenden Tests oder einem fehlgeschlagenen HTTP-Test erfolgt ein Git-Rollback.
+
+Zuerst einmalig prüfen und den Timer aktivieren:
+
+```bash
+cd ~/Projekte/MB-RF-Scan
+bash scripts/pi/sync-from-github.sh
+bash scripts/pi/install-sync-timer.sh
+systemctl --user is-enabled mb-rf-scan-sync.timer
+systemctl --user list-timers --all mb-rf-scan-sync.timer
+```
+
+Status und Protokoll:
+
+```bash
+systemctl --user status mb-rf-scan-sync.timer --no-pager
+journalctl --user -u mb-rf-scan-sync.service -n 60 --no-pager
+```
+
+Bei Bedarf einmal sofort synchronisieren: `systemctl --user start mb-rf-scan-sync.service`. Dauerhaft beenden: `systemctl --user disable --now mb-rf-scan-sync.timer`.
+
+**Synchronisierungsrichtung:** GitHub → Pi automatisch, lokale Codeänderungen → GitHub weiterhin bewusst nach Tests mit `git commit` und `git push`. Es gibt keine Hintergrundübertragung von Messdaten, Datenbanken, Zugangstokens oder IQ-Dateien. User-Timer laufen nur solange der systemd-Benutzermanager aktiv ist; bei ausgeschaltetem Pi wird kein Update ausgeführt und nach dem Wiederanlaufen entsprechend der Timer-Konfiguration nachgeholt. Für durchgehende Ausführung ohne Login wäre gesondert systemd-Linger zu konfigurieren.
+
+**Hinweis:** Ein grüner Unit-Test-Lauf ersetzt keine manuelle Prüfung kritischer Funk-/Hardwarefunktionen bei größeren Änderungen; der HTTP-Test prüft lediglich die Erreichbarkeit des Dashboards.
