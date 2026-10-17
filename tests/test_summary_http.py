@@ -167,7 +167,7 @@ class SummaryHTTPTests(unittest.TestCase):
             urlopen(self.base + "/api/session-detail?id=999999&bucket=5", timeout=3)
         self.assertEqual(missing.exception.code, 404)
 
-    def test_iq_apis_require_dashboard_token_and_return_exact_cu8_samples(self):
+    def test_iq_apis_are_available_without_token_on_loopback(self):
         archive = TraceArchive(self.db.parent / "iq-traces")
         config = RFConfig()
         raw = b"\x70\x90" * (config.samples_per_frame * 2)
@@ -178,56 +178,49 @@ class SummaryHTTPTests(unittest.TestCase):
         }
         trace = archive.save(raw, event, config, 0)
         self.assertIsNotNone(trace)
-        identity = trace["id"]
-        paths = [
-            "/api/iq/traces",
-            "/api/iq/trace?id=" + identity,
-            "/api/iq/samples?id=" + identity + "&start=0&count=512",
-        ]
-        for path in paths:
-            with self.subTest(path=path), self.assertRaises(HTTPError) as denied:
-                urlopen(self.base + path, timeout=4)
-            self.assertEqual(denied.exception.code, 403)
-
-        with urlopen(self.base + "/", timeout=4) as response:
-            html = response.read().decode("utf-8")
-        token = re.search(r'<meta name="rf-token" content="([^"]+)">', html).group(1)
-        self.assertNotEqual(token, archive.access_token)
-        self.assertNotIn(archive.access_token, html)
-        with self.assertRaises(HTTPError) as csrf_only:
-            urlopen(Request(self.base + paths[0], headers={
-                "X-RFMonitor-Token": token}), timeout=4)
-        self.assertEqual(csrf_only.exception.code, 403)
-        def authorized(path):
-            return urlopen(Request(self.base + path, headers={
-                "X-IQ-Access-Token": archive.access_token}), timeout=4)
-        with authorized(paths[0]) as result:
-            found = json.load(result)
-        self.assertEqual(len(found["traces"]), 1)
-        self.assertEqual(found["traces"][0]["id"], identity)
-        with authorized(paths[1]) as result:
-            metadata = json.load(result)["trace"]
-            self.assertFalse(metadata["decoder"]["verified"])
-            self.assertEqual(metadata["sample_count"], len(raw)//2)
-        with authorized(paths[2]) as result:
-            page = json.load(result)
+        identifier = trace["id"]
+        with urlopen(self.base + "/api/iq/traces", timeout=4) as response:
+            self.assertEqual(response.status, 200)
+            inventory = json.load(response)
+        self.assertEqual(len(inventory["traces"]), 1)
+        self.assertEqual(inventory["traces"][0]["id"], identifier)
+        with urlopen(self.base + "/api/iq/trace?id=" + identifier, timeout=4) as response:
+            meta = json.load(response)["trace"]
+        self.assertFalse(meta["decoder"]["verified"])
+        self.assertEqual(meta["sample_count"], len(raw) // 2)
+        with urlopen(
+                self.base + "/api/iq/samples?id=" + identifier
+                + "&start=0&count=512", timeout=4) as response:
+            page = json.load(response)
         self.assertEqual(page["count"], 512)
         self.assertEqual(page["i"], [0x70]*512)
         self.assertEqual(page["q"], [0x90]*512)
         self.assertTrue(page["spectrum"])
-        for path in (
+
+        for query in (
             "/api/iq/trace?id=../../passwd",
-            "/api/iq/samples?id="+identity+"&start=0&count=9999999",
-            "/api/iq/samples?id="+identity+"&start=-1&count=512",
-            "/api/iq/samples?id="+identity+"&start=0&count=512&extra=1",
+            "/api/iq/samples?id="+identifier+"&start=0&count=9999999",
+            "/api/iq/samples?id="+identifier+"&start=-1&count=512",
+            "/api/iq/samples?id="+identifier+"&start=0&count=512&extra=1",
         ):
-            with self.subTest(bad=path), self.assertRaises(HTTPError) as err:
-                authorized(path)
+            with self.subTest(bad=query), self.assertRaises(HTTPError) as err:
+                urlopen(self.base + query, timeout=4)
             self.assertEqual(err.exception.code, 400)
         with self.assertRaises(HTTPError) as missing:
-            authorized("/api/iq/trace?id="+"0"*32)
+            urlopen(self.base + "/api/iq/trace?id="+"0"*32, timeout=4)
         self.assertEqual(missing.exception.code, 404)
 
+    def test_untrusted_http_host_header_is_rejected(self):
+        with self.assertRaises(HTTPError) as raised:
+            urlopen(Request(self.base + "/api/status",
+                            headers={"Host": "untrusted.example"}), timeout=4)
+        self.assertEqual(raised.exception.code, 403)
+
+    def test_csrf_protection_for_web_writes_remains_enabled(self):
+        with self.assertRaises(HTTPError) as raised:
+            urlopen(Request(self.base + "/api/stop", data=b"",
+                            method="POST"), timeout=4)
+        self.assertEqual(raised.exception.code, 403)
 
 
 if __name__ == "__main__":
