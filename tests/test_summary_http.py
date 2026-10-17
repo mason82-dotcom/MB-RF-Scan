@@ -281,6 +281,46 @@ class SummaryHTTPTests(unittest.TestCase):
         self.assertEqual(missing.exception.code, 404)
 
 
+    def test_archive_pair_timing_endpoint_groups_real_trace_metadata(self):
+        from datetime import timedelta
+        archive = TraceArchive(self.db.parent / "iq-traces")
+        config = RFConfig()
+        raw = b"\x80\x80" * (config.samples_per_frame * 2)
+        origin = datetime.now(timezone.utc)
+        # Four bursts in newest-to-oldest archive ordering, two real-time gaps.
+        for index, start_ms in enumerate((0, 513, 2500, 3013)):
+            event = {
+                "kind": "burst",
+                "at": (origin + timedelta(milliseconds=start_ms)).isoformat(),
+                "start_s": 0.0, "end_s": 0.02, "duration_ms": 20.0,
+                "peak_snr_db": 20 + index, "peak_rise_db": 15.0,
+            }
+            self.assertIsNotNone(archive.save(raw, event, config, 0))
+        with urlopen(self.base + "/api/iq/pairs", timeout=4) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
+            payload = json.load(response)
+        self.assertEqual(payload["trace_count"], 4)
+        self.assertEqual(payload["pair_count"], 2)
+        self.assertEqual(payload["unpaired_count"], 0)
+        self.assertEqual([p["start_gap_ms"] for p in payload["pairs"]],
+                         [513.0, 513.0])
+        self.assertFalse(payload["button_mapping_verified"])
+        self.assertTrue(payload["no_raw_bits_or_iq"])
+        serialized = json.dumps(payload)
+        for secret in ("raw_symbols", "raw_iq", "hex_preview", "key_code",
+                       "bit_confidence", "iq_format", "decoder"):
+            self.assertNotIn(secret, serialized)
+
+    def test_pair_timing_empty_archive_is_read_only(self):
+        with urlopen(self.base + "/api/iq/pairs", timeout=4) as response:
+            self.assertEqual(response.status, 200)
+            payload = json.load(response)
+        self.assertEqual(payload["pair_count"], 0)
+        self.assertEqual(payload["trace_count"], 0)
+        self.assertIsNone(payload["duration_median_ms"])
+
+
 
 if __name__ == "__main__":
     unittest.main()

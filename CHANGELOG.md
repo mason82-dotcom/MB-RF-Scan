@@ -1,5 +1,13 @@
 # Änderungsprotokoll
 
+## v0.9.1 – Zeitliche Gruppierung archivierter I/Q-Bursts
+
+- Chronologische, schreibgeschützte Gruppierung der letzten höchstens 48 gespeicherten Burst-Metadaten zu disjunkten Paaren bei 400–650 ms Startabstand, Referenz 513 ms.
+- Live-Dashboard zeigt Paarnummer, Zeiten, Ruhepausen, Burstdauer, SNR, Ausreißer/ungepaarte Bursts und direkte Navigation in die I/Q-Ansicht.
+- Keine Annahme, welche Taste oder welches Fahrzeugkommando zu einem Paar gehört; externe Reihenfolge 2x Auf, 2x Zu bleibt unbestätigter Bedienhinweis.
+- Kein Zugriff auf Bitstreams oder IQ-Samples für die Paaranalyse; keine SDR-Aktion, kein ADS-B-Stop/Start und keine automatische Aufzeichnung durch diesen Endpunkt.
+
+
 ## 0.9.0 – Decoder-Hypothesen aus realen Burst-I/Q-Fenstern
 
 - Zusätzliche rein lesende FSK-Bitinterpretation mit zehn wählbaren Symbolraten, NRZ/Manchester, normaler/invertierter Polarität und Manchester-Halbbit-Phase.

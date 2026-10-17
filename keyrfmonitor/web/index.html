@@ -150,6 +150,34 @@
       <button id="copy-iq" class="secondary" type="button">IQ-Scanbefehl kopieren</button>
     </div>
     <p class="subtle">IQ-Aufnahmen ohne zusätzliche Tokenabfrage im Heimnetz 192.168.178.0/24 anzeigen. Netzwerkzugriff über HTTP ist unverschlüsselt.</p>
+    <section class="iq-pair-review" aria-labelledby="iq-pairs-title">
+      <div class="panel-head">
+        <div>
+          <h4 id="iq-pairs-title">Zeitliche Burst-Paaranalyse</h4>
+          <span class="subtle">Chronologisch nach tatsächlichem Empfangszeitpunkt – reine Metadaten</span>
+        </div>
+        <span class="pill neutral">Nur Zeitabstände, keine Bit-/Schlüsselzuordnung</span>
+      </div>
+      <div class="iq-pair-summary">
+        <div><span>Untersuchte Aufnahmen</span><strong id="iq-pair-trace-count">–</strong></div>
+        <div><span>Vermutete Wiederholungspaare</span><strong id="iq-pair-count">–</strong></div>
+        <div><span>Ungepaart</span><strong id="iq-unpaired-count">–</strong></div>
+        <div><span>Median-Burstdauer</span><strong id="iq-duration-median">–</strong></div>
+      </div>
+      <p id="iq-pairs-status" class="subtle" role="status">Die vorhandenen I/Q-Aufnahmen werden anhand ihrer Zeitstempel gruppiert.</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th>Paar</th><th>Empfangsbeginn 1</th><th>Startabstand</th>
+            <th>Ruhepause</th><th>Burstdauer 1 / 2</th><th>SNR 1 / 2</th><th>Ansicht</th>
+          </tr></thead>
+          <tbody id="iq-pair-body"><tr><td colspan="7" class="empty">Noch keine Zeitdaten</td></tr></tbody>
+        </table>
+      </div>
+      <p id="iq-unpaired-status" class="subtle">Nicht zugeordnete Aufnahmen werden separat gezählt.</p>
+      <p class="subtle">Die Paarung nutzt ausschließlich Startabstände von 400–650 ms (Referenz: 513 ms). Gleiche Sendeinhalte,
+      Tastenfunktion und Rahmenanfang werden dadurch nicht bewiesen. Die zeitliche Reihenfolge ist nicht die bisherige Sortierung „neueste zuerst“.</p>
+    </section>
     <div class="iq-controls">
       <label for="iq-choice">Gespeichertes Signal
         <select id="iq-choice" disabled><option value="">Keine IQ-Traces gespeichert</option></select>
@@ -234,7 +262,7 @@
   <section class="panel events"><div class="panel-head"><h3>Letzte Messereignisse</h3><span class="subtle">Nur Metadaten</span></div>
     <div class="table-scroll"><table><thead><tr><th>Zeit (lokal)</th><th>Quelle</th><th>Typ</th><th>Dauer / Abstand</th><th>Pegelanstieg</th><th>SNR</th></tr></thead><tbody id="event-body"><tr><td colspan="6" class="empty">Noch keine Ereignisse</td></tr></tbody></table></div>
   </section>
-  <footer>MB-RF-Scan 0.9.0 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
+  <footer>MB-RF-Scan 0.9.1 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
 </div>
 </body>
 </html>
