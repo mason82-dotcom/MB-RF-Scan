@@ -6,6 +6,106 @@ function fmtTime(s){try{return new Date(s).toLocaleString('de-DE',{dateStyle:'sh
 
 let sessionsLastFetched=0;
 let recentScanSessions=[];
+let detailSelectionLast=null;
+
+function clearSessionDetails(message){
+ $('session-detail-status').textContent=message;
+ $('detail-bursts').textContent='–';$('detail-pairs').textContent='–';
+ $('detail-timeline').replaceChildren();
+ $('detail-snr').replaceChildren();$('detail-duration').replaceChildren();
+ $('session-detail-warning').textContent='';
+ $('detail-timeline').setAttribute('aria-label',message);
+}
+function chooseSessionDetail(items){
+ const choice=$('session-detail-choice');
+ const previous=choice.value;
+ choice.replaceChildren();
+ if(!items.length){
+  choice.disabled=true;
+  const o=document.createElement('option');o.value='';o.textContent='Keine Sitzungen verfügbar';choice.append(o);
+  clearSessionDetails('Noch keine Sitzung aufgezeichnet.');
+  detailSelectionLast=null;return;
+ }
+ choice.disabled=false;
+ for(const session of items){
+  const option=document.createElement('option');
+  option.value=String(session.id);
+  option.textContent='#'+session.id+' · '+fmtTime(session.started_at);
+  choice.append(option);
+ }
+ choice.value=items.some(item=>String(item.id)===previous)?previous:String(items[0].id);
+ if(choice.value!==detailSelectionLast){
+  clearSessionDetails('Lade Sitzung #'+choice.value+' …');
+  detailSelectionLast=null;
+ }
+}
+function renderDetailHistogram(elementId,items){
+ const root=$(elementId);root.replaceChildren();
+ const max=Math.max(1,...items.map(item=>item.count));
+ for(const item of items){
+  const line=document.createElement('div');line.className='detail-histogram-line';
+  const label=document.createElement('span');label.textContent=item.label;
+  const barTrack=document.createElement('div');barTrack.className='detail-histogram-track';
+  const bar=document.createElement('span');bar.className='detail-histogram-fill';
+  bar.style.width=100*item.count/max+'%';barTrack.append(bar);
+  const count=document.createElement('b');count.textContent=String(item.count);
+  line.append(label,barTrack,count);root.append(line);
+ }
+}
+function renderSessionDetail(data){
+ if(!data.timeline_available){
+  clearSessionDetails('Diese ältere Sitzung hat keine eindeutig zugeordneten Burst-Metadaten. Keine Rückrechnung möglich.');
+  $('detail-step').textContent='–';
+  return;
+ }
+ const root=$('detail-timeline');root.replaceChildren();
+ const max=Math.max(1,...data.buckets.map(b=>Math.max(b.bursts,b.pairs)));
+ const totalBursts=data.included_bursts, totalPairs=data.included_pairs;
+ $('detail-bursts').textContent=String(totalBursts);
+ $('detail-pairs').textContent=String(totalPairs);
+ $('detail-step').textContent=data.bucket_seconds+' s';
+ for(const bucket of data.buckets){
+  const cell=document.createElement('div');cell.className='detail-timeline-cell';
+  const bars=document.createElement('div');bars.className='detail-timeline-bars';
+  for(const [kind,value] of [['burst',bucket.bursts],['pair',bucket.pairs]]){
+   const bar=document.createElement('span');bar.className='detail-timeline-bar '+kind;
+   bar.style.height=value?Math.max(4,100*value/max)+'%':'0%';bars.append(bar);
+  }
+  const tick=document.createElement('span');tick.className='detail-timeline-tick';
+  tick.textContent=String(bucket.from_s)+'s';
+  const annotation=[
+   bucket.from_s+'–'+bucket.to_s+' s',
+   bucket.bursts+' Bursts',
+   bucket.pairs+' Paare',
+   'Ø SNR: '+fmtNumber(bucket.avg_snr_db,'dB'),
+   'Ø Dauer: '+fmtNumber(bucket.avg_duration_ms,'ms'),
+  ];
+  cell.title=annotation.join(' | ');
+  cell.append(bars,tick);root.append(cell);
+ }
+ root.setAttribute('aria-label',totalBursts+' Bursts und '+totalPairs+' Paare in '+data.bucket_seconds+'-Sekunden-Buckets');
+ renderDetailHistogram('detail-snr',data.snr_distribution);
+ renderDetailHistogram('detail-duration',data.duration_distribution);
+ $('session-detail-status').textContent='Scan #'+data.session_id+' · '+fmtTime(data.started_at)
+    +' · '+data.result+' · ADS-B: '+data.restoration;
+ const warnings=[];
+ if(data.truncated)warnings.push('Mehr als 10.000 Ereignisse zugeordnet: Verlauf ist gekürzt.');
+ if(data.ignored_events)warnings.push(data.ignored_events+' Ereignisse außerhalb der Auswertezeit oder ohne gültige Zeitinformation.');
+ if(!totalBursts)warnings.push('Keine Burst-Metadaten im ausgewählten Verlauf.');
+ $('session-detail-warning').textContent=warnings.join(' ');
+}
+async function refreshSessionDetail(){
+ const choice=$('session-detail-choice').value;
+ if(!choice)return;
+ const response=await fetch('/api/session-detail?id='+encodeURIComponent(choice)+'&bucket=5',{cache:'no-store'});
+ if(!response.ok)throw Error('HTTP '+response.status);
+ const detail=await response.json();
+ // Ignore responses for a selection the user changed while loading.
+ if(choice!==$('session-detail-choice').value)return;
+ renderSessionDetail(detail);
+ detailSelectionLast=choice;
+}
+
 const sessionDiagnoses={
  adsb_restore_failed:'ADS-B-Wiederherstellung beim Scan fehlgeschlagen',
  unfinished_scan:'Abgelaufene Sitzung ohne Abschlussprotokoll',
@@ -98,6 +198,9 @@ async function refreshSessions(){
  const result=await res.json();
  recentScanSessions=result.sessions;
  renderSessions(recentScanSessions);
+ chooseSessionDetail(recentScanSessions);
+ try{await refreshSessionDetail()}
+ catch(e){$('session-detail-status').textContent='Sitzungsdetails nicht erreichbar: '+e.message}
  $('sessions-error').textContent='';
  $('sessions-updated').textContent='Aktualisiert '+new Date().toLocaleTimeString('de-DE');
  sessionsLastFetched=Date.now();
@@ -226,4 +329,10 @@ $('copy-scan').addEventListener('click',()=>{
 });
 $('history-window').addEventListener('change',()=>{historyFetched=0;refresh()});
 $('comparison-metric').addEventListener('change',()=>renderComparison(recentScanSessions));
+$('session-detail-choice').addEventListener('change',()=>{
+  detailSelectionLast=null;
+  refreshSessionDetail().catch(e=>{
+    $('session-detail-status').textContent='Sitzungsdetails nicht erreichbar: '+e.message;
+  });
+});
 refresh();setInterval(refresh,1500);
