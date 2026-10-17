@@ -185,8 +185,8 @@ class EventStore:
             if self._active_session_id is not None:
                 raise ValueError("A CLI scan is already associated with this store")
             cursor = self.db.execute(
-                "INSERT INTO scan_sessions(started_at,planned_seconds,result,restoration) "
-                "VALUES (?,?, 'running','pending')", (timestamp, planned_seconds))
+                "INSERT INTO scan_sessions(started_at,planned_seconds,result,restoration,stats_version) "
+                "VALUES (?,?, 'running','pending',2)", (timestamp, planned_seconds))
             self.db.commit()
             self._active_session_id = cursor.lastrowid
             return cursor.lastrowid
@@ -265,7 +265,7 @@ class EventStore:
             item["elapsed_seconds"] = max(0, round((end - start).total_seconds(), 1))
             item["stale"] = (item["result"] == "running" and
                              item["elapsed_seconds"] > item["planned_seconds"] + 90)
-            item["metrics_available"] = item.pop("stats_version") > 0
+            item["metrics_available"] = item.pop("stats_version") == 1
             notices = []
             if item["restoration"] == "failed":
                 notices.append("adsb_restore_failed")
@@ -375,7 +375,7 @@ class EventStore:
 
         # A newly started scan can have zero events and still have a valid
         # timeline. v0.5 sessions cannot be reconstructed after the fact.
-        available = session["stats_version"] > 0 or session["result"] == "running"
+        available = session["stats_version"] > 0
         return {
             "session_id": session_id,
             "result": session["result"],
