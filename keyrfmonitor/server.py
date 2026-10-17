@@ -15,6 +15,7 @@ from .hardware.sources import available_sources
 from .receiver import Monitor
 from .storage import EventStore
 from .iq_trace import TraceArchive
+from .pair_timing import summarize_pair_timing
 
 WEB = Path(__file__).resolve().parent / "web"
 
@@ -142,7 +143,14 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                     self._json({"message": "Zeitfenster: 6, 24 oder 168 Stunden."}, 400)
             elif self.path == "/api/iq/traces":
                 self._json({"traces": trace_archive.list_recent(),
-                            "capture_mode": "explicit_cli_only", "tx_enabled": False})
+                            "capture_mode": "manual_scan_only", "tx_enabled": False})
+            elif self.path == "/api/iq/pairs":
+                # Metadata-only: no CU8 read, no decoded bits or cryptographic
+                # material. Never starts/stops the SDR or modifies ADS-B.
+                try:
+                    self._json(summarize_pair_timing(trace_archive.list_recent(limit=48)))
+                except (ValueError, TypeError, OSError):
+                    self._json({"message": "Burst-Paar-Auswertung nicht verfügbar."}, 409)
             elif urlsplit(self.path).path == "/api/iq/trace":
                 try:
                     query = parse_qs(urlsplit(self.path).query,
