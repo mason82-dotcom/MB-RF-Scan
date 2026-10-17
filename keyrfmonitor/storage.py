@@ -5,6 +5,7 @@ from pathlib import Path
 import os
 import sqlite3
 import threading
+from datetime import datetime, timedelta, timezone
 
 _ALLOWED = {
     "kind", "at", "start_s", "end_s", "duration_ms", "peak_rise_db",
@@ -88,6 +89,52 @@ class EventStore:
             cur = self.db.execute("SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,))
             columns = [field[0] for field in cur.description]
             return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
+    def summary(self, hours: int = 24, *, now: datetime | None = None) -> dict:
+        """Real RTL-SDR burst statistics only; no simulated events or raw signals."""
+        if type(hours) is not int or hours not in (6, 24, 168):
+            raise ValueError("History window must be 6, 24 or 168 hours")
+        now = now or datetime.now(timezone.utc)
+        if now.tzinfo is None:
+            raise ValueError("History needs timezone-aware UTC timestamps")
+        now = now.astimezone(timezone.utc)
+        start = now - timedelta(hours=hours)
+        parameters = ("rtl_sdr", start.isoformat(), now.isoformat())
+        where = ("source=? AND simulated=0 AND "
+                 "julianday(at)>=julianday(?) AND julianday(at)<=julianday(?)")
+        with self.lock:
+            summary = self.db.execute(f"""
+                SELECT COUNT(CASE WHEN kind='burst' THEN 1 END),
+                       COUNT(CASE WHEN kind='pair' THEN 1 END),
+                       AVG(CASE WHEN kind='burst' THEN duration_ms END),
+                       AVG(CASE WHEN kind='burst' THEN peak_snr_db END),
+                       MAX(CASE WHEN kind='burst' THEN peak_snr_db END)
+                FROM events WHERE {where}
+            """, parameters).fetchone()
+            grouped = self.db.execute(f"""
+                SELECT strftime('%Y-%m-%dT%H:00:00Z', at),kind,COUNT(*)
+                FROM events WHERE {where}
+                GROUP BY strftime('%Y-%m-%dT%H:00:00Z', at),kind
+            """, parameters).fetchall()
+            latest = self.db.execute(f"""SELECT at FROM events WHERE {where}
+                ORDER BY julianday(at) DESC,id DESC LIMIT 1""", parameters).fetchone()
+        counts = {(hour, kind): count for hour,kind,count in grouped}
+        floor = start.replace(minute=0,second=0,microsecond=0)
+        final = now.replace(minute=0,second=0,microsecond=0)
+        total = int((final-floor).total_seconds()//3600)+1
+        buckets = []
+        for i in range(total):
+            hour = (floor+timedelta(hours=i)).strftime("%Y-%m-%dT%H:00:00Z")
+            buckets.append({"hour":hour,"bursts":counts.get((hour,"burst"),0),
+                            "pairs":counts.get((hour,"pair"),0)})
+        return {"window_hours":hours,"burst_count":summary[0],
+                "pair_count":summary[1],
+                "avg_duration_ms":round(summary[2],1) if summary[2] is not None else None,
+                "avg_snr_db":round(summary[3],1) if summary[3] is not None else None,
+                "peak_snr_db":round(summary[4],1) if summary[4] is not None else None,
+                "last_event_at":latest[0] if latest else None,
+                "buckets":buckets,"source":"rtl_sdr","simulated":False}
 
     def close(self) -> None:
         with self.lock:
