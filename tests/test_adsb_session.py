@@ -159,6 +159,46 @@ class ScanModeTests(unittest.TestCase):
         self.assertEqual((session["result"], session["restoration"]), ("error", "failed"))
         store.close()
 
+
+    def test_cli_session_collects_per_scan_signal_analytics(self):
+        from datetime import datetime, timezone
+
+        class EmittingMonitor(FakeMonitor):
+            def start(self):
+                when = datetime.now(timezone.utc).isoformat()
+                for duration, snr, rise in ((180, 40, 20), (190, 44, 24)):
+                    self.store.insert({"kind": "burst", "at": when,
+                                       "duration_ms": duration, "peak_snr_db": snr,
+                                       "peak_rise_db": rise})
+                self.store.insert({"kind": "pair", "at": when, "start_gap_ms": 500})
+                # Simulated RF data cannot be assigned to a real CLI scan.
+                self.store.insert({"kind": "burst", "at": when, "duration_ms": 300,
+                                   "peak_snr_db": 99, "peak_rise_db": 99,
+                                   "source": "cc1101_sim", "simulated": True})
+                return super().start()
+
+        ctrl = FakeControl()
+        with patch("keyrfmonitor.adsb_session.shutil.which", return_value="/usr/bin/rtl_sdr"), \
+             patch("keyrfmonitor.adsb_session.Monitor", EmittingMonitor), \
+             patch("keyrfmonitor.adsb_session.time.monotonic", side_effect=[0, 61]), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(run_scan(60, control=ctrl, database=self.path), 0)
+
+        store = EventStore(self.path)
+        try:
+            session = store.recent_sessions()[0]
+            self.assertEqual((session["result"], session["restoration"]),
+                             ("completed", "verified"))
+            self.assertTrue(session["metrics_available"])
+            self.assertEqual((session["avg_duration_ms"], session["min_duration_ms"],
+                              session["max_duration_ms"]), (185, 180, 190))
+            self.assertEqual((session["avg_snr_db"], session["peak_snr_db"]),
+                             (42, 44))
+            self.assertEqual((session["avg_rise_db"], session["peak_rise_db"]),
+                             (22, 24))
+        finally:
+            store.close()
+
     def test_cli_invalid_seconds(self):
         err = io.StringIO()
         with contextlib.redirect_stderr(err):

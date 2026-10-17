@@ -229,3 +229,26 @@ Bei jedem autorisierten Terminalscan (`/usr/bin/python3 -m keyrfmonitor scan --s
 Die API `GET /api/sessions` zeigt höchstens 30 der jüngsten Sitzungen und speichert ausschließlich Metadaten. Nicht beendete Datensätze behalten `running/pending` und können nach Ablauf der geplanten Dauer als unvollständig markiert werden. **Dies ist kein zuverlässiger Hinweis auf den aktuellen Dienstzustand:** Der unabhängige Root-Watchdog bleibt für die ADS-B-Rückschaltung zuständig. Alte Burst-Ereignisse aus v0.3/v0.4 werden nicht rückwirkend Sitzungen zugeordnet.
 
 Auch v0.5.0 startet weder Scans noch `sudo`-Kommandos aus dem Browser. Der Webserver zeigt Sitzungen nur lesend an.
+
+## v0.6.0: Scanvergleich und Qualitätskennzahlen
+
+Neue CLI-Scans erhalten zusätzliche, rein lokale Qualitätskennzahlen aus den
+bereits gespeicherten Burst-Metadaten: mittlere/minimale/maximale Burstdauer,
+mittlerer/maximaler Signal-Rausch-Abstand (SNR) und mittlerer/maximaler Pegelanstieg.
+Nur während der aktiven CLI-Sitzung erfasste **echte RTL-SDR-Ereignisse** werden
+berücksichtigt; `scan_session_events` ordnet dafür ausschließlich Datenbank-IDs
+zu. Synthetische CC1101-Ereignisse werden nie für diesen Vergleich verwendet.
+
+Das Dashboard zeigt einen Vergleich der jüngsten abgeschlossenen Scans,
+mit Burst- und Paarzahlen sowie optional SNR und Burstdauer. Diagnosehinweise
+beruhen nur auf objektiven Kriterien (z. B. **keine Bursts**, **keine Burst-Paare**,
+**fehlende SNR-Metadaten**, **unvollständig protokolliert**,
+**ADS-B-Wiederherstellungsversuch fehlgeschlagen**). Diese Aussagen sind weder
+eine Senderidentifikation noch eine Bewertung der Fahrzeug- oder Schlüssel-Sicherheit.
+
+Alte v0.5-Sitzungen bleiben erhalten und zeigen `metrics_available: false`,
+da sie nicht nachträglich mit Messereignissen verknüpft werden. Neue Sessions
+liefern selbst bei null Bursts `metrics_available: true` und null-SNR/-Dauer.
+Die `/api/sessions`-Schnittstelle bleibt schreibgeschützt und liefert maximal
+30 Sitzungen. Die Browseranwendung kann weiterhin weder `dump1090.service`
+anhalten noch einen privilegierten Terminalscan auslösen.

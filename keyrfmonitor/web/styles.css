@@ -26,3 +26,20 @@
 .sessions{margin-top:13px}.sessions .panel-head{margin-bottom:10px}.sessions .panel-head>div{display:flex;flex-direction:column;gap:3px}
 .sessions .info{margin:0 0 15px;padding:0;border:0}.sessions td{white-space:nowrap}.sessions td:first-child{white-space:normal;min-width:135px}
 .session-warning td{color:#f0bc86}.sessions .table-scroll{max-height:460px;overflow:auto}
+
+/* v0.6: comparable per-minute passive scan metrics, pure CSS/DOM */
+.scan-analytics{padding:16px 0 10px;border-block:1px solid var(--border);margin:14px 0 15px}
+.comparison-head{display:flex;align-items:start;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.comparison-head h4{margin:0;font-size:14px}.comparison-head p{margin:5px 0 0}
+.comparison-scroll{overflow-x:auto;padding:10px 0}
+.comparison-chart{display:flex;align-items:flex-end;gap:9px;min-height:186px;padding:8px 12px;background:#0e1929;border:1px solid var(--border);border-radius:9px}
+.comparison-chart>.empty{width:100%;align-self:center}
+.comparison-item{display:flex;flex:1;min-width:38px;max-width:100px;align-items:center;flex-direction:column;gap:5px}
+.comparison-value{color:#d4f0f4;font-size:11px;font-variant-numeric:tabular-nums}
+.comparison-bar-area{height:115px;width:100%;display:flex;align-items:end;justify-content:center;border-bottom:1px solid #4e6475}
+.comparison-bar{width:78%;max-width:36px;background:linear-gradient(180deg,#8fe3d8,#278094);border-radius:4px 4px 0 0}
+.comparison-label{color:var(--muted);font-size:11px}.scan-analytics #comparison-note{margin:0 0 8px}
+.session-review{padding:10px 13px;margin:10px 0 14px;border:1px solid #536278;border-radius:9px;background:#152436}
+.session-review strong{font-size:12px}.session-review p{margin:5px 0 0;line-height:1.5}
+.sessions .table-scroll{max-height:520px}.sessions td{max-width:300px}.sessions td:last-child{white-space:normal;min-width:160px}
+@media(max-width:680px){.comparison-chart{min-width:540px}.comparison-head{flex-direction:column}}

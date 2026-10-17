@@ -79,16 +79,37 @@
   </section>
   <section class="panel sessions" aria-labelledby="sessions-title">
     <div class="panel-head"><div><h3 id="sessions-title">Scan-Sitzungen</h3><span class="subtle">Befristete Terminalscans · lokale Sitzungsmetadaten</span></div><span class="subtle" id="sessions-updated">–</span></div>
-    <p class="info">Neue Terminalscans werden hier protokolliert. Ein noch offener Datensatz nach einem Abbruch bestätigt ausdrücklich keine ADS-B-Wiederherstellung. Frühere Messungen vor v0.5.0 sind nicht rückwirkend einzelnen Sitzungen zugeordnet.</p>
+    <p class="info">Neue Terminalscans werden hier protokolliert. Ein noch offener Datensatz nach einem Abbruch bestätigt ausdrücklich keine ADS-B-Wiederherstellung. Qualitätskennzahlen gelten erst für neue Scans ab v0.6.0; bestehende v0.5-Sitzungen bleiben unverändert.</p>
+    <div class="scan-analytics">
+      <div class="comparison-head">
+        <div><h4>Sitzungen vergleichen</h4><p class="subtle">Letzte 12 regulär abgeschlossene Scans mit bestätigter ADS-B-Wiederherstellung</p></div>
+        <label class="select-label" for="comparison-metric">Kennzahl
+          <select id="comparison-metric">
+            <option value="burst_rate">Bursts / Minute</option>
+            <option value="pair_rate">Paare / Minute</option>
+            <option value="avg_snr_db">Ø SNR (dB)</option>
+            <option value="avg_duration_ms">Ø Burstdauer (ms)</option>
+            <option value="avg_rise_db">Ø Pegelanstieg (dB)</option>
+          </select>
+        </label>
+      </div>
+      <div class="comparison-scroll"><div id="comparison-chart" class="comparison-chart" role="img" aria-label="Keine Sitzungen für einen Vergleich vorhanden"></div></div>
+      <p id="comparison-note" class="subtle">Bursts und Paare werden für unterschiedlich lange Scans auf Ereignisse pro Minute normiert.</p>
+    </div>
+    <div class="session-review" aria-live="polite">
+      <strong>Diagnosehinweise</strong>
+      <p id="session-diagnostics" class="subtle">Keine aktuellen Auffälligkeiten in den gespeicherten Sitzungen.</p>
+    </div>
     <div class="table-scroll"><table><thead><tr>
-      <th>Beginn</th><th>Soll / Ist</th><th>Ergebnis</th><th>ADS-B wiederhergestellt</th><th>Bursts</th><th>Paare</th>
-    </tr></thead><tbody id="session-body"><tr><td colspan="6" class="empty">Noch keine Scan-Sitzungen protokolliert</td></tr></tbody></table></div>
+      <th>Beginn</th><th>Soll / Ist</th><th>Ergebnis</th><th>ADS-B</th>
+      <th>Bursts / Paare</th><th>Ø Dauer</th><th>Ø SNR</th><th>Max. SNR</th><th>Hinweise</th>
+    </tr></thead><tbody id="session-body"><tr><td colspan="9" class="empty">Noch keine Scan-Sitzungen protokolliert</td></tr></tbody></table></div>
     <p id="sessions-error" class="subtle" role="status"></p>
   </section>
   <section class="panel events"><div class="panel-head"><h3>Letzte Messereignisse</h3><span class="subtle">Nur Metadaten</span></div>
     <div class="table-scroll"><table><thead><tr><th>Zeit (lokal)</th><th>Quelle</th><th>Typ</th><th>Dauer / Abstand</th><th>Pegelanstieg</th><th>SNR</th></tr></thead><tbody id="event-body"><tr><td colspan="6" class="empty">Noch keine Ereignisse</td></tr></tbody></table></div>
   </section>
-  <footer>MB-RF-Scan 0.5.0 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
+  <footer>MB-RF-Scan 0.6.0 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
 </div>
 </body>
 </html>
