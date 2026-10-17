@@ -48,8 +48,9 @@ class FakeControl:
 class FakeMonitor:
     instances = []
     fail_start = False
-    def __init__(self, store):
+    def __init__(self, store, config=None, trace=None):
         self.store = store
+        self.trace = trace
         self.closed = False
         self.__class__.instances.append(self)
 
@@ -207,7 +208,7 @@ class ScanModeTests(unittest.TestCase):
         self.assertIn("20 und 300", err.getvalue())
 
 
-    def test_regular_cli_scan_never_creates_raw_iq_archive(self):
+    def test_no_iq_opt_out_never_creates_raw_iq_archive(self):
         ctrl = FakeControl()
         with patch("keyrfmonitor.adsb_session.shutil.which", return_value="/usr/bin/rtl_sdr"), \
              patch("keyrfmonitor.adsb_session.TraceArchive",
@@ -215,9 +216,27 @@ class ScanModeTests(unittest.TestCase):
              patch("keyrfmonitor.adsb_session.Monitor", FakeMonitor), \
              patch("keyrfmonitor.adsb_session.time.monotonic", side_effect=[0, 21]), \
              contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(run_scan(20, control=ctrl, database=self.path), 0)
+            self.assertEqual(run_scan(20, control=ctrl, database=self.path,
+                                      capture_iq=False), 0)
         self.assertFalse((Path(self.path).parent / "iq-traces").exists())
         self.assertTrue(ctrl.active)
+
+    def test_default_terminal_scan_prepares_bounded_real_iq_and_restores_adsb(self):
+        ctrl = FakeControl()
+        output = io.StringIO()
+        with patch("keyrfmonitor.adsb_session.shutil.which", return_value="/usr/bin/rtl_sdr"), \
+             patch("keyrfmonitor.adsb_session.Monitor", FakeMonitor), \
+             patch("keyrfmonitor.adsb_session.time.monotonic", side_effect=[0, 21]), \
+             contextlib.redirect_stdout(output):
+            self.assertEqual(run_scan(20, control=ctrl, database=self.path), 0)
+        fake = FakeMonitor.instances[-1]
+        self.assertIsNotNone(fake.trace)
+        self.assertEqual(fake.trace.max_captures, 48)
+        self.assertEqual(fake.trace.saved, 0)
+        self.assertTrue((Path(self.path).parent / "iq-traces").exists())
+        self.assertIn("IQ-Standard", output.getvalue())
+        self.assertTrue(ctrl.active)
+        self.assertEqual(ctrl.commands[-2:], ["restore", "disarm"])
 
     def test_opt_in_iq_cli_scan_preserves_adsb_restoration(self):
         class TraceAwareMonitor(FakeMonitor):
@@ -238,13 +257,18 @@ class ScanModeTests(unittest.TestCase):
         self.assertTrue((Path(self.path).parent / "iq-traces").is_dir())
         self.assertIn("IQ-Traces: 0 gespeichert", output.getvalue())
 
-    def test_cli_iq_flag_is_explicit_and_parser_only(self):
+    def test_default_cli_enables_iq_and_no_iq_disables(self):
         with patch("keyrfmonitor.adsb_session.run_scan", return_value=0) as execute:
             self.assertEqual(__main__.main(["scan", "--seconds", "20", "--iq"]), 0)
             execute.assert_called_once_with(seconds=20, capture_iq=True)
         with patch("keyrfmonitor.adsb_session.run_scan", return_value=0) as execute:
             self.assertEqual(__main__.main(["scan", "--seconds", "20"]), 0)
+            execute.assert_called_once_with(seconds=20, capture_iq=True)
+        with patch("keyrfmonitor.adsb_session.run_scan", return_value=0) as execute:
+            self.assertEqual(__main__.main(["scan", "--seconds", "20", "--no-iq"]), 0)
             execute.assert_called_once_with(seconds=20, capture_iq=False)
+        with self.assertRaises(SystemExit):
+            __main__.main(["scan", "--iq", "--no-iq"])
 
     def test_systemd_commands_fixed_and_watchdog_first(self):
         ctl = ADSBControl()

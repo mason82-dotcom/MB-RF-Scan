@@ -175,6 +175,21 @@ class TraceArchiveTests(unittest.TestCase):
         self.assertGreater(len(record["decoder"]["bits"]), 250)
         self.assertFalse(record["security_protocol_verified"])
 
+    def test_reset_scan_preserves_files_but_resets_per_scan_counters(self):
+        collector = TraceCollector(self.archive, self.cfg, max_captures=1)
+        for index in range(27):
+            buf = b"\x80\x80" * self.cfg.samples_per_frame
+            collector.record_frame(index, buf, [self.event] if index == 25 else [])
+        self.assertEqual(collector.saved, 1)
+        stored = self.archive.list_recent()[0]["id"]
+        collector.record_frame(27, b"\x80\x80" * self.cfg.samples_per_frame,
+                               [self.event])
+        self.assertEqual(collector.skipped, 1)
+        collector.reset_scan()
+        self.assertEqual((collector.saved, collector.skipped), (0, 0))
+        self.assertEqual(len(collector.frames), 0)
+        self.assertIsNotNone(self.archive.read(stored))
+
     def test_collector_skips_when_per_session_cap_is_reached(self):
         collector = TraceCollector(self.archive, self.cfg, max_captures=1)
         for index in range(30):
