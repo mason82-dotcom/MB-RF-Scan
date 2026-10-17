@@ -94,3 +94,22 @@ Bei Bedarf einmal sofort synchronisieren: `systemctl --user start mb-rf-scan-syn
 **Synchronisierungsrichtung:** GitHub → Pi automatisch, lokale Codeänderungen → GitHub weiterhin bewusst nach Tests mit `git commit` und `git push`. Es gibt keine Hintergrundübertragung von Messdaten, Datenbanken, Zugangstokens oder IQ-Dateien. User-Timer laufen nur solange der systemd-Benutzermanager aktiv ist; bei ausgeschaltetem Pi wird kein Update ausgeführt und nach dem Wiederanlaufen entsprechend der Timer-Konfiguration nachgeholt. Für durchgehende Ausführung ohne Login wäre gesondert systemd-Linger zu konfigurieren.
 
 **Hinweis:** Ein grüner Unit-Test-Lauf ersetzt keine manuelle Prüfung kritischer Funk-/Hardwarefunktionen bei größeren Änderungen; der HTTP-Test prüft lediglich die Erreichbarkeit des Dashboards.
+
+## 6. Dashboard-Neustart: Readiness-Check und Fehlerdiagnose
+
+Der Webdienst ist eine systemd-`Type=simple`-Unit. `systemctl --user restart` kann erfolgreich zurückkehren, bevor `127.0.0.1:8890` gebunden ist. Deshalb wartet `sync-from-github.sh` ab dem nächsten Commit bis zu 20 Sekunden auf **Dienststatus aktiv** und die HTTP-API `/api/status`. Ein einzelnes `curl: (7) Failed to connect` löst keinen sofortigen Rollback mehr aus.
+
+Wenn der Webtest weiterhin fehlschlägt, werden Dienststatus und letzte Journalzeilen ausgegeben, anschließend erfolgt ein Git-Rollback und ein erneuter Bereitschaftstest des alten Webdienstes. Ein Git-Rollback behebt keine Probleme wie Portkonflikte, fehlende Rechte oder unvollständige systemd-Konfiguration.
+
+Sicher prüfen:
+
+```bash
+systemctl --user show keyrfmonitor.service -p WorkingDirectory -p ExecStart -p NRestarts
+systemctl --user status keyrfmonitor.service --no-pager -l
+journalctl --user -u keyrfmonitor.service -n 60 --no-pager -l
+ss -ltnp '( sport = :8890 )'
+curl -sS --max-time 3 http://127.0.0.1:8890/api/status
+systemctl is-active dump1090.service
+```
+
+Nach einem Rollback auf `5bd63b8` fehlt `install-sync-timer.sh` lokal wieder; zuerst die Webdienstursache klären. Zum einmaligen Einspielen der neuen Version bei stabiler Weboberfläche `git fetch origin main && git merge --ff-only origin/main` ausführen, Unit-Tests starten und anschließend den Webdienst kontrolliert neu starten. Den Timer erst aktivieren, wenn dieser Schritt erfolgreich ist.

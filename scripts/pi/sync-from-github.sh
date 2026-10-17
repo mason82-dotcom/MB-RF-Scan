@@ -21,6 +21,20 @@ if ! systemctl is-active --quiet dump1090.service; then
   exit 2
 fi
 
+# systemd Type=simple meldet 'started' bereits vor dem HTTP-Listen.
+# Abwarten statt beim ersten ECONNREFUSED sofort einen Rollback auszufuehren.
+wait_for_dashboard() {
+  local attempt
+  for ((attempt=1; attempt<=20; attempt++)); do
+    if systemctl --user is-active --quiet keyrfmonitor.service &&
+       curl --silent --fail --max-time 2 http://127.0.0.1:8890/api/status >/dev/null 2>&1; then
+      return 0
+    fi
+    if ((attempt < 20)); then sleep 1; fi
+  done
+  return 1
+}
+
 old="$(git rev-parse HEAD)"
 git fetch origin main
 new="$(git rev-parse origin/main)"
@@ -42,10 +56,17 @@ if systemctl --user is-active --quiet keyrfmonitor.service; then
     echo "Hinweis: Webdienst verwendet $service_dir und wird nicht neu gestartet."
     echo "Zuerst docs/PI_SYNC.md zum Umzug des Webdienstes lesen."
   else
-    if ! systemctl --user restart keyrfmonitor.service || ! curl -fsS --max-time 5 http://127.0.0.1:8890/ >/dev/null; then
-      echo "Webtest fehlgeschlagen; Rollback auf $old" >&2
+    if ! systemctl --user restart keyrfmonitor.service || ! wait_for_dashboard; then
+      echo "Webdienst nach bis zu 20 s nicht erreichbar. Dienstprotokoll:" >&2
+      systemctl --user --no-pager status keyrfmonitor.service >&2 || true
+      journalctl --user -u keyrfmonitor.service -n 30 --no-pager >&2 || true
+      echo "Rollback auf $old" >&2
       git reset --hard "$old"
-      systemctl --user restart keyrfmonitor.service || true
+      if systemctl --user restart keyrfmonitor.service && wait_for_dashboard; then
+        echo "Vorheriger Webdienst wieder erreichbar." >&2
+      else
+        echo "WARNUNG: Webdienst auch nach Rollback nicht erreichbar! Bitte Journal pruefen." >&2
+      fi
       exit 1
     fi
   fi
