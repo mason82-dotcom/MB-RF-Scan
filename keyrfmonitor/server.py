@@ -14,7 +14,7 @@ from .hardware.cc1101_sim import CC1101Simulator
 from .hardware.sources import available_sources
 from .receiver import Monitor
 from .storage import EventStore
-from .iq_trace import TraceArchive
+from .iq_trace import TraceArchive, ArchiveExportError
 from .pair_timing import summarize_pair_timing
 from .iq_envelope import compare_envelope_reports
 
@@ -65,10 +65,16 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
             # No key material is present in paths, but avoid arbitrary query-string logging.
             return
 
-        def _write(self, data: bytes, content_type: str, status: int = 200):
+        def _write(self, data: bytes, content_type: str, status: int = 200,
+                   *, download_name: str | None = None):
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
+            if download_name is not None:
+                # Only server-generated filenames from strictly checked
+                # lowercase hexadecimal IDs may reach this header.
+                self.send_header("Content-Disposition",
+                                 f'attachment; filename="{download_name}"')
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
@@ -197,6 +203,33 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                     self._json({"message": "Ungültiger Paarindex oder I/Q-Daten."}, 400)
                 except OSError:
                     self._json({"message": "Archivdatei nicht lesbar."}, 409)
+            elif urlsplit(self.path).path == "/api/iq/download":
+                # A deliberate GET download of an existing private archive
+                # file. No new RF capture, replay, scan or ADS-B operation.
+                try:
+                    params = parse_qs(urlsplit(self.path).query,
+                                      keep_blank_values=True, strict_parsing=True)
+                    if (set(params) != {"id", "format"}
+                            or any(len(values) != 1 for values in params.values())):
+                        raise ValueError("Expected exactly id and format")
+                    trace_id = params["id"][0]
+                    kind = params["format"][0]
+                    if kind not in ("cu8", "json"):
+                        raise ValueError("Expected cu8 or json")
+                    payload = trace_archive.export_bytes(trace_id, kind)
+                    if payload is None:
+                        self._json({"message": "I/Q-Aufnahme nicht gefunden."}, 404)
+                    else:
+                        self._write(
+                            payload,
+                            "application/octet-stream" if kind == "cu8"
+                            else "application/json; charset=utf-8",
+                            download_name=f"{trace_id}.{kind}",
+                        )
+                except (ValueError, OverflowError):
+                    self._json({"message": "Ungültige I/Q-Downloadparameter."}, 400)
+                except ArchiveExportError:
+                    self._json({"message": "Archivdatei beschädigt oder nicht lesbar."}, 409)
             elif urlsplit(self.path).path == "/api/iq/trace":
                 try:
                     query = parse_qs(urlsplit(self.path).query,
