@@ -229,6 +229,58 @@ class SummaryHTTPTests(unittest.TestCase):
         self.assertEqual(status["state"], "stopped")
 
 
+    def test_readonly_fsk_decode_api_exposes_selectable_hypotheses(self):
+        archive = TraceArchive(self.db.parent / "iq-traces")
+        config = RFConfig()
+        # Mock RF tones are not needed to test the HTTP security/shape contract:
+        raw = b"\x80\x80" * (config.samples_per_frame * 20)
+        event = {
+            "kind": "burst", "at": datetime.now(timezone.utc).isoformat(),
+            "start_s": 0, "end_s": .2, "duration_ms": 200,
+            "peak_snr_db": 25.0, "peak_rise_db": 19.0,
+        }
+        item = archive.save(raw, event, config, 0)
+        trace_id = item["id"]
+        base = "/api/iq/decode?id=" + trace_id
+        nrz = base + "&baud=2000&coding=nrz&polarity=normal&alignment=0"
+        with urlopen(self.base + nrz, timeout=6) as response:
+            decoded = json.load(response)
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
+        self.assertEqual(decoded["baud"], 2000)
+        self.assertEqual(decoded["coding"], "nrz")
+        self.assertEqual(decoded["source"], "rtl_sdr")
+        self.assertEqual(decoded["interpretation"], "hypothesis_only")
+        self.assertFalse(decoded["frame_verified"])
+        self.assertFalse(decoded["security_protocol_verified"])
+        with urlopen(self.base + base +
+                     "&baud=2000&coding=manchester&polarity=inverted&alignment=1",
+                     timeout=6) as response:
+            manchester = json.load(response)
+        self.assertEqual(manchester["coding"], "manchester")
+        self.assertEqual(manchester["alignment"], 1)
+        self.assertEqual(manchester["polarity"], "inverted")
+        self.assertLessEqual(manchester["bit_count"], decoded["bit_count"] // 2)
+
+    def test_fsk_api_rejects_invalid_query_and_unknown_traces(self):
+        identity = "0" * 32
+        valid = "id=" + identity + "&baud=2000&coding=nrz&polarity=normal&alignment=0"
+        for query in (
+            "id=" + identity + "&baud=15000&coding=nrz&polarity=normal&alignment=0",
+            "id=" + identity + "&baud=2000&coding=nrz&polarity=normal&alignment=1",
+            "id=" + identity + "&baud=2000&coding=rot13&polarity=normal&alignment=0",
+            "id=" + identity + "&baud=2000&coding=nrz&polarity=normal&alignment=0&extra=1",
+            "id=" + identity + "&baud=2000&coding=nrz&polarity=normal",
+            "id=../../etc&baud=2000&coding=nrz&polarity=normal&alignment=0",
+            valid + "&id=" + identity,
+        ):
+            with self.subTest(query=query), self.assertRaises(HTTPError) as bad:
+                urlopen(self.base + "/api/iq/decode?" + query, timeout=3)
+            self.assertEqual(bad.exception.code, 400)
+        with self.assertRaises(HTTPError) as missing:
+            urlopen(self.base + "/api/iq/decode?" + valid, timeout=3)
+        self.assertEqual(missing.exception.code, 404)
+
+
 
 if __name__ == "__main__":
     unittest.main()

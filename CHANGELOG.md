@@ -1,5 +1,14 @@
 # Änderungsprotokoll
 
+## 0.9.0 – Decoder-Hypothesen aus realen Burst-I/Q-Fenstern
+
+- Zusätzliche rein lesende FSK-Bitinterpretation mit zehn wählbaren Symbolraten, NRZ/Manchester, normaler/invertierter Polarität und Manchester-Halbbit-Phase.
+- Hexansicht ohne erfundene unbekannte Bits (`??`); Symbolunsicherheit, mögliche alternierende Pegelfolgen, Taktversatz und geschätzte Tonfrequenzen.
+- Statische Original-CU8-Aufnahmen bleiben unverändert, keine Änderung der Scanzeit, ADS-B-Watchdog-Logik, HF-Übertragung oder des LAN-Zugriffs.
+- Neue read-only Decoder-API mit strikter Parameterprüfung und maximal zwei gleichzeitig laufenden DSP-Aufträgen.
+- Zusätzliche Tests für Symbolhypothesen, Archiv-Unveränderlichkeit, unbekannte Bits, HTTP-API und UI-Verträge.
+
+
 ## v0.8.1 – Echte I/Q- und Bitansichten sofort bei regulären Scans
 
 - Explizit gestartete Terminalscans speichern standardmäßig echte CU8-I/Q-Bursts samt unsicheren FSK-Bitentscheidungen; `--iq` ist kompatibel, `--no-iq` deaktiviert die Aufnahme.

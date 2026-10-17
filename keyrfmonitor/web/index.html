@@ -183,11 +183,50 @@
       <div><h4>FFT-Spektrum (Ausschnitt)</h4><canvas id="iq-spectrum" height="200" width="800" role="img" aria-label="Spektrum der ausgewählten Samples"></canvas></div>
     </div>
     <div class="iq-keybits">
-      <div class="panel-head"><h4>FSK-Bitentscheidungen (gesamter erkannter Burst)</h4>
+      <div class="panel-head"><h4>FSK-Bitentscheidungen und Codierungshypothesen</h4>
         <button id="iq-copy-bits" class="secondary" type="button" disabled>Bitfolge kopieren</button>
+      </div>
+      <div class="iq-decoder-controls">
+        <label for="iq-decode-baud">Symbolrate (Hypothese)
+          <select id="iq-decode-baud">
+            <option value="600">600 Bd</option><option value="1000">1.000 Bd</option>
+            <option value="1200">1.200 Bd</option><option value="1600">1.600 Bd</option>
+            <option value="2000" selected>2.000 Bd</option><option value="2400">2.400 Bd</option>
+            <option value="3200">3.200 Bd</option><option value="4000">4.000 Bd</option>
+            <option value="4800">4.800 Bd</option><option value="9600">9.600 Bd</option>
+          </select>
+        </label>
+        <label for="iq-decode-coding">Bitcodierung (Hypothese)
+          <select id="iq-decode-coding">
+            <option value="nrz" selected>NRZ / FSK-Symbole</option>
+            <option value="manchester">Manchester (01/10)</option>
+          </select>
+        </label>
+        <label for="iq-decode-polarity">Polarität
+          <select id="iq-decode-polarity">
+            <option value="normal">Normal</option>
+            <option value="inverted">Invertiert</option>
+          </select>
+        </label>
+        <label for="iq-decode-alignment">Manchester-Ausrichtung
+          <select id="iq-decode-alignment" disabled>
+            <option value="0">Phase 0</option><option value="1">Phase 1</option>
+          </select>
+        </label>
+        <button id="iq-run-decode" class="secondary" type="button">Neu dekodieren</button>
+      </div>
+      <p id="iq-analysis-status" class="subtle" role="status">Wähle eine echte I/Q-Aufnahme; anschließend wird die vorläufige Bitinterpretation geladen.</p>
+      <div class="iq-analysis-metrics">
+        <div><span>Unsichere Bits</span><strong id="iq-uncertain">–</strong></div>
+        <div><span>Ungültige Manchester-Paare</span><strong id="iq-invalid-pairs">–</strong></div>
+        <div><span>Symboltaktlage</span><strong id="iq-clock">–</strong></div>
+        <div><span>Geschätzte Frequenzlagen</span><strong id="iq-frequencies">–</strong></div>
       </div>
       <p id="iq-decoder-status" class="subtle">Nicht geladen.</p>
       <pre id="iq-bits" class="iq-bits" aria-label="Empfangene FSK-Symbolhypothesen">–</pre>
+      <h5>Byte-/Hexansicht (Byteanfang nicht synchronisiert)</h5>
+      <pre id="iq-hex" class="iq-bits" aria-label="Hypothetische Bytegruppen">–</pre>
+      <p id="iq-alternation" class="subtle">Keine Präambel oder Rahmenstruktur verifiziert.</p>
       <p class="subtle">Dies sind nicht verifizierte 0/1/?, keine sicher dekodierten Schlüsselcodes. Ohne Symboltakt- und Protokollabgleich sind Bitgrenzen unsicher.</p>
     </div>
     <p class="subtle">Die lokalen Dateien liegen nur auf dem Pi mit privaten Dateirechten im Ordner <code>~/.local/share/keyrfmonitor/iq-traces/</code>. Bei normalen Scans werden I/Q-Burstfenster und Bithypothesen mit erfasst; <code>--no-iq</code> schaltet das ab. Keine HF-Aussendung.</p>
@@ -195,7 +234,7 @@
   <section class="panel events"><div class="panel-head"><h3>Letzte Messereignisse</h3><span class="subtle">Nur Metadaten</span></div>
     <div class="table-scroll"><table><thead><tr><th>Zeit (lokal)</th><th>Quelle</th><th>Typ</th><th>Dauer / Abstand</th><th>Pegelanstieg</th><th>SNR</th></tr></thead><tbody id="event-body"><tr><td colspan="6" class="empty">Noch keine Ereignisse</td></tr></tbody></table></div>
   </section>
-  <footer>MB-RF-Scan 0.8.1 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
+  <footer>MB-RF-Scan 0.9.0 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
 </div>
 </body>
 </html>

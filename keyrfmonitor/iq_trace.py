@@ -3,7 +3,7 @@
 This module is receive-only. It never drives hardware, transmits, replays
 signals or interprets proprietary security protocols. Bit decisions are
 uncertified hypotheses from a nominal FSK symbol clock, not validated codes.
-The operator must explicitly invoke "scan --iq" for a bounded CLI session.
+Only explicitly started scans capture bursts; --no-iq disables raw recording.
 """
 from __future__ import annotations
 
@@ -15,11 +15,13 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import uuid
 
 import numpy as np
 
 from .dsp import RFConfig
+from .bit_analysis import interpret_symbols, validate_options
 
 TRACE_NAME = re.compile(r"^[0-9a-f]{32}$")
 MAX_CAPTURES_PER_SCAN = 48
@@ -50,8 +52,9 @@ def demodulate_fsk(raw: bytes, config: RFConfig, active_start: int,
     z = (data[:, 0] - 127.5) + 1j * (data[:, 1] - 127.5)
     if len(z) < per_symbol * 2:
         return {"bits": "", "confidence": [], "timing_offset_samples": 0,
-                "baud_nominal": baud, "verified": False,
-                "method": "phase_discriminator_fsk"}
+                "samples_per_symbol": per_symbol, "estimated_low_hz": None,
+                "estimated_high_hz": None, "baud_nominal": baud,
+                "verified": False, "method": "phase_discriminator_fsk"}
     frequency = (np.angle(z[1:] * np.conj(z[:-1])).astype(np.float32)
                  * (config.sample_rate / (2 * np.pi)))
     sums = np.concatenate(([0.0], np.cumsum(frequency, dtype=np.float64)))
@@ -79,10 +82,15 @@ def demodulate_fsk(raw: bytes, config: RFConfig, active_start: int,
         "?" if strength < 0.35 else "1" if value >= middle else "0"
         for value, strength in zip(means, quality)
     )
+    low = means[(means < middle) & (quality >= 0.35)]
+    high = means[(means >= middle) & (quality >= 0.35)]
     return {
         "bits": bits,
         "confidence": [round(float(x), 2) for x in quality],
         "timing_offset_samples": int(best),
+        "samples_per_symbol": per_symbol,
+        "estimated_low_hz": round(float(np.median(low)), 1) if len(low) else None,
+        "estimated_high_hz": round(float(np.median(high)), 1) if len(high) else None,
         "baud_nominal": baud,
         "verified": False,
         "method": "phase_discriminator_fsk",
@@ -210,6 +218,53 @@ class TraceArchive:
             except (OSError, ValueError, KeyError, json.JSONDecodeError):
                 continue
         return sorted(results, key=lambda e: e["saved_at"], reverse=True)[:limit]
+
+    def decode_hypothesis(self, trace_id: str, *, baud: int = NOMINAL_BAUD,
+                          coding: str = "nrz", polarity: str = "normal",
+                          alignment: int = 0) -> dict | None:
+        """Inspect a bounded stored CU8 burst without modifying archived bytes.
+
+        Only 1 second of samples is ever accepted. Uncertified symbols and
+        unknown bytes remain explicitly uncertain in the response.
+        """
+        validate_options(baud, coding, polarity, alignment)
+        meta = self.read(trace_id)
+        if meta is None:
+            return None
+        rate = meta["sample_rate"]
+        total = meta["sample_count"]
+        if (type(rate) is not int or rate != RFConfig().sample_rate
+                or type(total) is not int or not 2 <= total <= rate):
+            raise ValueError("Unsupported I/Q sampling format or capture size")
+        begin, end = meta["active_from_sample"], meta["active_to_sample"]
+        if (type(begin) is not int or type(end) is not int
+                or not 0 <= begin < end <= total):
+            raise ValueError("Invalid active signal bounds")
+        filename = self.path / (self._id(trace_id) + ".cu8")
+        descriptor = os.open(filename, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(descriptor, "rb") as stream:
+            details = os.fstat(stream.fileno())
+            if not stat.S_ISREG(details.st_mode) or details.st_size != total * 2:
+                raise ValueError("IQ file and stored metadata differ")
+            raw = stream.read(total * 2)
+        config = RFConfig(
+            center_hz=meta["center_hz"], sample_rate=rate,
+            gain_db=meta["gain_db"], low_offset_hz=meta["low_offset_hz"],
+            high_offset_hz=meta["high_offset_hz"])
+        physical = demodulate_fsk(raw, config, begin, end, baud=baud)
+        output = interpret_symbols(
+            physical, baud=baud, coding=coding, polarity=polarity,
+            alignment=alignment)
+        output.update({
+            "id": trace_id,
+            "event_at": meta["event_at"],
+            "duration_ms": meta["duration_ms"],
+            "active_samples": end - begin,
+            "sample_rate": rate,
+            "source": "rtl_sdr",
+            "modulation_hypothesis": "2-FSK",
+        })
+        return output
 
     def sample_page(self, trace_id: str, start: int, count: int) -> dict | None:
         if type(start) is not int or start < 0 or type(count) is not int \

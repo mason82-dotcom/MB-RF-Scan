@@ -46,6 +46,7 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
     db_path = db_path or str(Path.home() / ".local/share/keyrfmonitor/events.sqlite3")
     store = EventStore(db_path)
     trace_archive = TraceArchive(Path(db_path).parent / "iq-traces")
+    decode_slots = threading.BoundedSemaphore(2)  # Bound CPU-heavy IQ analyses
     # An explicitly initiated browser scan also captures bounded real I/Q.
     # It still refuses to start while dump1090.service owns the SDR.
     from .dsp import RFConfig
@@ -153,6 +154,42 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                         {"message": "Trace nicht gefunden"}, 404)
                 except (ValueError, OverflowError):
                     self._json({"message": "Ungültige Trace-ID"}, 400)
+            elif urlsplit(self.path).path == "/api/iq/decode":
+                try:
+                    params = parse_qs(urlsplit(self.path).query,
+                                      keep_blank_values=True, strict_parsing=True)
+                    required = {"id", "baud", "coding", "polarity", "alignment"}
+                    if set(params) != required or any(len(v) != 1 for v in params.values()):
+                        raise ValueError("Expected exactly five decoder parameters")
+                    baud_text = params["baud"][0]
+                    align_text = params["alignment"][0]
+                    if (not baud_text.isascii() or not baud_text.isdecimal()
+                            or align_text not in ("0", "1")):
+                        raise ValueError("Invalid numeric decoder parameters")
+                    # Validate all choices BEFORE allocating costly DSP resources.
+                    from .bit_analysis import validate_options
+                    baud = int(baud_text)
+                    alignment = int(align_text)
+                    coding = params["coding"][0]
+                    polarity = params["polarity"][0]
+                    validate_options(baud, coding, polarity, alignment)
+                    if not decode_slots.acquire(blocking=False):
+                        self._json({"message": "Decoder ausgelastet, bitte erneut versuchen."}, 429)
+                        return
+                    try:
+                        data = trace_archive.decode_hypothesis(
+                            params["id"][0], baud=baud, coding=coding,
+                            polarity=polarity, alignment=alignment)
+                    finally:
+                        decode_slots.release()
+                    if data is None:
+                        self._json({"message": "IQ-Aufnahme nicht gefunden."}, 404)
+                    else:
+                        self._json(data)
+                except (ValueError, OverflowError, KeyError):
+                    self._json({"message": "Ungültige Decoderparameter oder I/Q-Datei."}, 400)
+                except OSError:
+                    self._json({"message": "Die I/Q-Datei kann nicht gelesen werden."}, 409)
             elif urlsplit(self.path).path == "/api/iq/samples":
                 try:
                     query = parse_qs(urlsplit(self.path).query,
