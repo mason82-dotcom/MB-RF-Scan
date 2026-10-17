@@ -349,6 +349,8 @@ let iqInventoryBusy=false;
 let iqLastInventoryIds='';
 let iqPairBusy=false;
 let iqPairSignature='';
+let iqQualityBusy=false;
+let iqQualityLastSignature='';
 const IQ_REFRESH_INTERVAL_MS=4000;
 
 async function iqFetch(path){
@@ -559,6 +561,114 @@ async function refreshIQTraces(){
   iqInventoryBusy=false;
  }
 }
+/* Read-only pair energy envelope; no bits, raw samples or RF hardware. */
+function iqMetric(value,decimals=1){
+ return Number.isFinite(value)?value.toFixed(decimals)+' ms':'nicht bestimmbar';
+}
+function drawIQEnvelope(first,second){
+ const canvas=$('iq-envelope-canvas'),ctx=canvas.getContext('2d');
+ const w=canvas.width,h=canvas.height;
+ ctx.clearRect(0,0,w,h);
+ ctx.fillStyle='#101d2b';ctx.fillRect(0,0,w,h);
+ const l=55,r=18,t=18,b=43,plotW=w-l-r,plotH=h-t-b;
+ const profiles=[
+  {points:first.profile||[],color:'#71ded1',name:'Burst 1'},
+  {points:second.profile||[],color:'#edb96f',name:'Burst 2'}
+ ];
+ const nums=profiles.flatMap(x=>x.points)
+   .filter(p=>Number.isFinite(p.time_ms)&&Number.isFinite(p.excess_db));
+ const xmin=nums.length?Math.min(-20,...nums.map(p=>p.time_ms)):-20;
+ const xmax=nums.length?Math.max(210,...nums.map(p=>p.time_ms)):210;
+ const ymin=-10,ymax=50;
+ const xp=x=>l+(x-xmin)/Math.max(1,xmax-xmin)*plotW;
+ const yp=y=>t+(ymax-y)/Math.max(1,ymax-ymin)*plotH;
+ ctx.lineWidth=1;ctx.strokeStyle='#43546b';ctx.strokeRect(l,t,plotW,plotH);
+ ctx.font='12px sans-serif';ctx.fillStyle='#a4b5c9';
+ for(const value of [0,10,20,30,40]){
+  ctx.strokeStyle='#2a4054';ctx.beginPath();ctx.moveTo(l,yp(value));ctx.lineTo(w-r,yp(value));ctx.stroke();
+  ctx.fillText(value+' dB',5,yp(value)+4);
+ }
+ ctx.strokeStyle='#67788d';ctx.setLineDash([5,5]);
+ ctx.beginPath();ctx.moveTo(xp(0),t);ctx.lineTo(xp(0),h-b);ctx.stroke();
+ ctx.setLineDash([]);
+ ctx.fillStyle='#a4b5c9';ctx.fillText('Zeit relativ zum erkannten Burstbeginn (ms)',l,h-9);
+ ctx.fillText('0',xp(0)+3,h-b+16);
+ for(const series of profiles){
+  ctx.strokeStyle=series.color;ctx.lineWidth=2;ctx.beginPath();
+  let started=false;
+  for(const point of series.points){
+   if(!Number.isFinite(point.time_ms)||!Number.isFinite(point.excess_db)){
+    started=false;continue;
+   }
+   const x=xp(point.time_ms),y=yp(Math.max(ymin,Math.min(ymax,point.excess_db)));
+   if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+ }
+ ctx.fillStyle=profiles[0].color;ctx.fillRect(w-170,19,10,10);
+ ctx.fillStyle='#d7e5f3';ctx.fillText('Burst 1',w-155,28);
+ ctx.fillStyle=profiles[1].color;ctx.fillRect(w-95,19,10,10);
+ ctx.fillStyle='#d7e5f3';ctx.fillText('Burst 2',w-80,28);
+}
+function renderIQPairQuality(report){
+ const a=report.first,b=report.second,c=report.comparison;
+ $('iq-detector-durations').textContent=
+   iqMetric(a.detector_duration_ms)+' / '+iqMetric(b.detector_duration_ms);
+ $('iq-active-durations').textContent=
+   iqMetric(a.estimated_active_duration_ms)+' / '+iqMetric(b.estimated_active_duration_ms);
+ $('iq-start-offsets').textContent=
+   iqMetric(a.estimated_start_offset_ms)+' / '+iqMetric(b.estimated_start_offset_ms);
+ $('iq-end-offsets').textContent=
+   iqMetric(a.estimated_end_offset_ms)+' / '+iqMetric(b.estimated_end_offset_ms);
+ const descriptions={
+  insufficient_edge_evidence:'Die Signalflanken sind nicht sicher bestimmbar.',
+  detector_durations_similar:'Die vom Detektor erfassten Burstdauern sind bereits ähnlich.',
+  compatible_with_detector_boundary_difference:
+    'Die längere Detektordauer ist mit unterschiedlichen Burstgrenzen vereinbar.',
+  compatible_with_active_duration_difference:
+    'Die Daten sind mit einer tatsächlich unterschiedlichen Aktivitätsdauer vereinbar.',
+  undetermined:'Die Ursache der Dauerabweichung bleibt unklar.'
+ };
+ $('iq-quality-conclusion').textContent=
+   (descriptions[c.assessment]||descriptions.undetermined)+
+   (c.estimated_active_difference_ms===null?''
+    :' Geschätzter Unterschied (Burst 2 − 1): '+
+      iqMetric(c.estimated_active_difference_ms)+'.')+
+   ' Keine Protokoll-, Tasten- oder Rahmenverifikation.';
+ $('iq-quality-status').textContent=
+   'Paar '+report.pair_index+' · Signalflanken: '+
+   a.edge_status+' / '+b.edge_status+
+   ' · Kontrast: '+
+   (Number.isFinite(a.signal_above_reference_db)?a.signal_above_reference_db.toFixed(1)+' dB':'–')+
+   ' / '+
+   (Number.isFinite(b.signal_above_reference_db)?b.signal_above_reference_db.toFixed(1)+' dB':'–')+
+   ' · Startabstand: '+iqMetric(report.start_gap_ms);
+ drawIQEnvelope(a,b);
+}
+async function refreshIQPairQuality(){
+ if(iqQualityBusy)return;
+ const choice=$('iq-quality-pair'),number=Number(choice.value);
+ if(!Number.isInteger(number)||number<1)return;
+ const signature=choice.value+'|'+iqPairSignature;
+ if(signature===iqQualityLastSignature)return;
+ iqQualityBusy=true;
+ try{
+  $('iq-quality-status').textContent='Berechne I/Q-Hüllkurven aus lokal gespeicherten Signalen …';
+  const report=await iqFetch('/api/iq/pair-quality?pair='+number);
+  if(choice.value!==String(number))return;
+  renderIQPairQuality(report);
+  iqQualityLastSignature=signature;
+ }finally{
+  iqQualityBusy=false;
+ }
+}
+function iqQualityError(err){
+ $('iq-quality-status').textContent='I/Q-Hüllkurven nicht verfügbar: '+err.message;
+}
+$('iq-quality-pair').addEventListener('change',()=>{
+ iqQualityLastSignature='';
+ refreshIQPairQuality().catch(iqQualityError);
+});
 /* v0.9.1: timing-only pairing of *existing* real I/Q burst metadata. */
 async function refreshIQPairs(){
  if(iqPairBusy)return;
@@ -569,6 +679,21 @@ async function refreshIQPairs(){
     '|'+data.unpaired.map(t=>t.id).join(',');
   if(signature===iqPairSignature && data.trace_count===Number($('iq-pair-trace-count').textContent))return;
   iqPairSignature=signature;
+  const pairSelect=$('iq-quality-pair'),oldChoice=pairSelect.value;
+  pairSelect.replaceChildren();
+  pairSelect.disabled=data.pairs.length===0;
+  for(const pair of data.pairs){
+   const option=document.createElement('option');
+   option.value=String(pair.index);
+   option.textContent='Paar '+pair.index+' · '+fmtTime(pair.first.event_at);
+   pairSelect.append(option);
+  }
+  if(data.pairs.length){
+   pairSelect.value=data.pairs.some(p=>String(p.index)===oldChoice)?oldChoice:'1';
+  }else{
+   $('iq-quality-status').textContent='Keine vollständigen Burst-Paare im Archiv.';
+  }
+  iqQualityLastSignature='';
   $('iq-pair-trace-count').textContent=String(data.trace_count);
   $('iq-pair-count').textContent=String(data.pair_count);
   $('iq-unpaired-count').textContent=String(data.unpaired_count);
@@ -621,6 +746,7 @@ async function refreshIQPairs(){
     +data.trace_count+' Aufnahmen; keine Tasten- oder Protokollverifikation.'
     +(data.ignored_invalid_or_duplicate
       ?' '+data.ignored_invalid_or_duplicate+' fehlerhafte/duplizierte Einträge ignoriert.':'');
+  if(data.pairs.length)await refreshIQPairQuality().catch(iqQualityError);
  }finally{
   iqPairBusy=false;
  }
