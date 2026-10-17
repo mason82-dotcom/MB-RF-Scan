@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="rf-token" content="__RF_CSRF_TOKEN__">
+<title>KeyRFMonitor · Passiver Funkmonitor</title>
+<link rel="stylesheet" href="/styles.css">
+<script defer src="/app.js"></script>
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <div class="brand"><div class="brand-icon">RF</div><div><h1>KeyRFMonitor</h1><p>Eigenständige Funkdiagnose · Raspberry Pi 5</p></div></div>
+    <span id="status-pill" class="pill neutral">Verbinde …</span>
+  </header>
+  <section class="intro">
+    <div><div class="eyebrow">PASSIVE 433-MHz-ANALYSE</div><h2>Funkereignisse präzise erfassen.</h2>
+    <p>Lokale Überwachung der beiden FSK-Frequenzlagen. Es werden ausschließlich technische Messwerte erfasst – keine Schlüsselcodes, keine IQ-Rohdaten und keine Funksignale gesendet.</p></div>
+    <div class="controls"><button id="start" class="primary" disabled>Messung starten</button><button id="stop" class="secondary" disabled>Messung beenden</button></div>
+  </section>
+  <div id="notice" class="notice" role="status" aria-live="polite">Verbindung zum Backend wird hergestellt.</div>
+  <section class="cards">
+    <article class="metric"><div class="metric-label">Mittenfrequenz</div><div class="metric-value">433,920 <small>MHz</small></div><p>RTL2832U / R820T</p></article>
+    <article class="metric"><div class="metric-label">Empfängerverstärkung</div><div class="metric-value">7,7 <small>dB</small></div><p>Fest eingestellt</p></article>
+    <article class="metric"><div class="metric-label">Erkannte Bursts</div><div id="bursts" class="metric-value">0</div><p>Seit Start der Messung</p></article>
+    <article class="metric"><div class="metric-label">Erkannte Paare</div><div id="pairs" class="metric-value">0</div><p>Zwei Bursts im Abstand 400–650 ms</p></article>
+  </section>
+  <section class="workspace">
+    <article class="panel"><div class="panel-head"><h3>Live-Empfang</h3><span id="receive-state" class="subtle">Inaktiv</span></div>
+      <div class="bars"><div><span>Pegelanstieg</span><strong id="rise">–</strong></div><div class="meter"><div id="rise-bar"></div></div></div>
+      <div class="bars"><div><span>Signal-Rausch-Abstand</span><strong id="snr">–</strong></div><div class="meter"><div id="snr-bar"></div></div></div>
+      <div class="three"><div><span>Frequenzlage 1</span><strong>−20,12 kHz</strong></div><div><span>Frequenzlage 2</span><strong>+11,35 kHz</strong></div><div><span>Symbolrate (Referenz)</span><strong>≈ 2.000 Bd</strong></div></div>
+      <div class="info">Die Frequenzlagen sind Referenzwerte aus der bisherigen Messreihe. Die Live-Erkennung prüft das Frequenzspektrum, demoduliert jedoch keine Telegrammdaten.</div>
+    </article>
+    <article class="panel"><div class="panel-head"><h3>Empfänger & ADS-B</h3></div>
+      <div class="status-line"><span>SDR-Monitor</span><b id="monitor-status">–</b></div>
+      <div class="status-line"><span>dump1090.service</span><b id="adsb-status">–</b></div>
+      <div class="status-line"><span>Kalibrierung</span><b id="cal-status">–</b></div>
+      <div class="status-line"><span>Temporärer Konsolenscan</span><b id="external-scan">Inaktiv</b></div>
+      <div class="status-line"><span>CC1101 (SPI)</span><b>Vorbereitet · kein RX/TX</b></div>
+      <div class="status-line"><span>IQ-Dateien gespeichert</span><b>Nein</b></div>
+      <div class="status-line"><span>Schlüsselcodes gespeichert</span><b>Nein</b></div>
+      <div class="info">Für die Web-Messung ist weiterhin eine manuelle Freigabe nötig. Der separate befristete Konsolenmodus übernimmt ADS-B-Stopp und -Neustart kontrolliert und ist nur mit ausdrücklicher sudo-Freigabe ausführbar.</div>
+      <pre id="backend-error" class="error" hidden></pre>
+    </article>
+  </section>
+  <section class="panel cli-scan">
+    <div class="panel-head"><h3>Befristeter Scan mit ADS-B-Wiederherstellung</h3><span class="subtle">Nur auf dem Pi-Terminal</span></div>
+    <p class="info">Ein Konsolenbefehl stoppt <code>dump1090.service</code> befristet, misst ausschließlich passive Burst-Metadaten und startet ADS-B danach automatisch erneut. Vor dem Stoppen wird ein systemd-Wiederherstellungstimer aktiviert. Kein automatisches sudo aus dem Browser.</p>
+    <div class="scan-command"><code id="scan-command">cd ~/Projekte/KeyRFMonitor &amp;&amp; /usr/bin/python3 -m keyrfmonitor scan --seconds 60</code><button id="copy-scan" class="secondary" type="button">Befehl kopieren</button></div>
+    <p class="subtle">Dauer 20–300 Sekunden. Der Befehl fragt bei Bedarf nach dem sudo-Passwort.</p>
+  </section>
+  <section class="panel events"><div class="panel-head"><h3>Letzte Messereignisse</h3><span class="subtle">Nur Metadaten</span></div>
+    <div class="table-scroll"><table><thead><tr><th>Zeit (lokal)</th><th>Typ</th><th>Dauer / Abstand</th><th>Pegelanstieg</th><th>SNR</th></tr></thead><tbody id="event-body"><tr><td colspan="5" class="empty">Noch keine Ereignisse</td></tr></tbody></table></div>
+  </section>
+  <footer>KeyRFMonitor 0.3.0 · Standalone · Empfang ausschließlich passiv · Keine Verbindung zu AeroNexusAdvanced</footer>
+</div>
+</body>
+</html>

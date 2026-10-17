@@ -1,0 +1,2 @@
+# Debian Raspberry Pi OS: sudo apt install python3-numpy rtl-sdr
+numpy>=2.0
