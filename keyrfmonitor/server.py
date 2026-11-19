@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import errno
 import json
 import ipaddress
 import threading
@@ -149,14 +150,19 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                 except (ValueError, OverflowError):
                     self._json({"message": "Zeitfenster: 6, 24 oder 168 Stunden."}, 400)
             elif self.path == "/api/iq/traces":
-                self._json({"traces": trace_archive.list_recent(),
+                try:
+                    traces = trace_archive.list_recent()
+                except OSError:
+                    self._json({"message": "I/Q-Archiv nicht lesbar."}, 409)
+                    return
+                self._json({"traces": traces,
                             "capture_mode": "manual_scan_only", "tx_enabled": False})
             elif self.path == "/api/iq/pairs":
                 # Metadata-only: no CU8 read, no decoded bits or cryptographic
                 # material. Never starts/stops the SDR or modifies ADS-B.
                 try:
                     self._json(summarize_pair_timing(trace_archive.list_recent(limit=48)))
-                except (ValueError, TypeError, OSError):
+                except (ValueError, TypeError, KeyError, AttributeError, OSError):
                     self._json({"message": "Burst-Paar-Auswertung nicht verfügbar."}, 409)
             elif urlsplit(self.path).path == "/api/iq/pair-quality":
                 # Read existing bounded IQ files for 1 ms envelope statistics,
@@ -164,8 +170,13 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                 try:
                     params = parse_qs(urlsplit(self.path).query,
                                       strict_parsing=True, keep_blank_values=True)
-                    if set(params) != {"pair"} or len(params["pair"]) != 1:
+                    if (set(params) not in ({"pair"}, {"pair", "first", "second"})
+                            or any(len(values) != 1 for values in params.values())):
                         raise ValueError("Missing or duplicate pair index")
+                    expected_ids = None
+                    if "first" in params:
+                        expected_ids = (TraceArchive._id(params["first"][0]),
+                                        TraceArchive._id(params["second"][0]))
                     text_index = params["pair"][0]
                     if not text_index.isascii() or not text_index.isdecimal():
                         raise ValueError("Invalid pair index")
@@ -182,6 +193,13 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                         return
                     try:
                         pair = grouped["pairs"][index - 1]
+                        if expected_ids is not None and expected_ids != (
+                                pair["first"]["id"], pair["second"]["id"]):
+                            # The archive changed between listing and request:
+                            # never show another pair under the selected label.
+                            self._json({"message": "Paarliste hat sich geändert; bitte neu wählen.",
+                                        "stale_pair": True}, 412)
+                            return
                         first = trace_archive.envelope_summary(pair["first"]["id"])
                         second = trace_archive.envelope_summary(pair["second"]["id"])
                     finally:
@@ -199,7 +217,7 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                         "read_only": True,
                         "contains_raw_iq_or_key_bits": False,
                     })
-                except (ValueError, TypeError, KeyError, OverflowError):
+                except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
                     self._json({"message": "Ungültiger Paarindex oder I/Q-Daten."}, 400)
                 except OSError:
                     self._json({"message": "Archivdatei nicht lesbar."}, 409)
@@ -241,6 +259,8 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                         {"message": "Trace nicht gefunden"}, 404)
                 except (ValueError, OverflowError):
                     self._json({"message": "Ungültige Trace-ID"}, 400)
+                except (OSError, TypeError, KeyError):
+                    self._json({"message": "I/Q-Metadaten beschädigt oder nicht lesbar."}, 409)
             elif urlsplit(self.path).path == "/api/iq/decode":
                 try:
                     params = parse_qs(urlsplit(self.path).query,
@@ -273,7 +293,7 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                         self._json({"message": "IQ-Aufnahme nicht gefunden."}, 404)
                     else:
                         self._json(data)
-                except (ValueError, OverflowError, KeyError):
+                except (ValueError, OverflowError, KeyError, TypeError):
                     self._json({"message": "Ungültige Decoderparameter oder I/Q-Datei."}, 400)
                 except OSError:
                     self._json({"message": "Die I/Q-Datei kann nicht gelesen werden."}, 409)
@@ -292,6 +312,8 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                         {"message": "Trace nicht gefunden"}, 404)
                 except (ValueError, OverflowError):
                     self._json({"message": "Erwartet: id, start und count=512|2048|8192"}, 400)
+                except (OSError, TypeError, KeyError):
+                    self._json({"message": "I/Q-Aufnahme beschädigt oder nicht lesbar."}, 409)
             elif self.path == "/api/sources":
                 self._json({"sources": available_sources()})
             elif self.path == "/api/cc1101/status":
@@ -347,26 +369,72 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
             self._json({"message": message}, 200 if ok else 409)
 
     httpd = None
-    lan_httpd = None
+    lan_state: dict = {"server": None, "serving": False}
+    lan_lock = threading.Lock()
+    lan_stop = threading.Event()
     lan_thread = None
+
+    def bind_lan():
+        try:
+            return ThreadingHTTPServer((lan_host, port), Handler)
+        except OSError as exc:
+            if exc.errno != errno.EADDRNOTAVAIL:
+                raise
+            return None
+
+    def announce_lan():
+        print(f"MB-RF-Scan LAN: http://{lan_host}:{port} "
+              "(Quellnetz 192.168.178.0/24, nur HTTP)", flush=True)
+
+    def run_lan_listener():
+        # The LAN address can appear after the user unit starts (DHCP/WLAN).
+        # Retry the explicit bind instead of taking the loopback listener down;
+        # never fall back to a wildcard socket.
+        lan_httpd = lan_state["server"]
+        while lan_httpd is None:
+            if lan_stop.wait(5):
+                return
+            try:
+                lan_httpd = bind_lan()
+            except OSError as exc:
+                print(f"MB-RF-Scan LAN: Bindefehler {exc}; LAN bleibt aus.", flush=True)
+                return
+            if lan_httpd is not None:
+                announce_lan()
+        with lan_lock:
+            lan_state["server"] = lan_httpd
+            if lan_stop.is_set():
+                lan_httpd.server_close()
+                return
+            lan_state["serving"] = True
+        lan_httpd.serve_forever(poll_interval=0.25)
+
     try:
         httpd = ThreadingHTTPServer((host, port), Handler)
         if lan_host:
-            # If the LAN address is unavailable, fail without opening a wildcard
-            # socket or accidentally closing only one of the listeners.
-            lan_httpd = ThreadingHTTPServer((lan_host, port), Handler)
+            lan_state["server"] = bind_lan()
+            if lan_state["server"] is None:
+                print(f"MB-RF-Scan LAN: {lan_host} noch nicht verfügbar; "
+                      "neuer Versuch alle 5 s, lokal läuft das Dashboard weiter.",
+                      flush=True)
+            else:
+                announce_lan()
             lan_thread = threading.Thread(
-                target=lan_httpd.serve_forever, kwargs={"poll_interval": 0.25},
-                name="keyrfmonitor-lan-http", daemon=True)
+                target=run_lan_listener, name="keyrfmonitor-lan-http", daemon=True)
             lan_thread.start()
-            print(f"MB-RF-Scan LAN: http://{lan_host}:{port} "
-                  "(Quellnetz 192.168.178.0/24, nur HTTP)", flush=True)
         print(f"KeyRFMonitor: http://{host}:{port} "
               "(lokal, keine SDR-Autostartfunktion)", flush=True)
         httpd.serve_forever(poll_interval=0.25)
     finally:
+        with lan_lock:
+            lan_stop.set()
+            lan_httpd = lan_state["server"]
+            serving = lan_state["serving"]
         if lan_httpd is not None:
-            lan_httpd.shutdown()
+            if serving:
+                # shutdown() blocks until serve_forever ran, so only call it
+                # when the listener thread has committed to serving.
+                lan_httpd.shutdown()
             lan_httpd.server_close()
         if lan_thread is not None:
             lan_thread.join(timeout=3)

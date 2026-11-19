@@ -60,22 +60,35 @@ def main(argv=None) -> int:
     cc_sub.add_parser("simulate", help="Neun synthetische CC1101-Metadatenereignisse ausgeben (kein SPI)")
     cc_sub.add_parser("wiring", help="Pinbelegung anzeigen (ohne Hardwarezugriff)")
     cc_probe = cc_sub.add_parser("probe", help="Nur PARTNUM/VERSION per SPI auslesen")
-    cc_probe.add_argument("--bus", type=int, default=0)
-    cc_probe.add_argument("--device", type=int, default=0)
+    from .hardware.cc1101 import DEFAULT_SPI_BUS, DEFAULT_SPI_DEVICE
+    cc_probe.add_argument("--bus", type=int, default=DEFAULT_SPI_BUS,
+                          help=f"SPI-Bus (Standard {DEFAULT_SPI_BUS})")
+    cc_probe.add_argument("--device", type=int, default=DEFAULT_SPI_DEVICE,
+                          help=f"Chip-Select (Standard CE{DEFAULT_SPI_DEVICE})")
+    cc_probe.add_argument("--allow-spi0", action="store_true",
+                          help="SPI0 trotz Pironman-5-RGB-LEDs verwenden")
     args = parser.parse_args(argv)
     if args.cmd == "cc1101":
-        from .hardware.cc1101 import CC1101ProbeError, probe, wiring_lines
+        from .hardware.cc1101 import (
+            CC1101ProbeError, probe, spi0_used_by_pironman, wiring_lines,
+        )
         if args.cc_action == "simulate":
             from .hardware.cc1101_sim import simulated_events
             for event in simulated_events():
                 print(json.dumps(event, ensure_ascii=False))
             return 0
         if args.cc_action == "wiring":
-            print("=== CC1101 / Raspberry Pi 5, SPI0 CE0 ===")
+            print(f"=== CC1101 / Raspberry Pi 5, SPI{DEFAULT_SPI_BUS} "
+                  f"CE{DEFAULT_SPI_DEVICE} ===")
             for item in wiring_lines():
                 print("-", item)
             print("CC1101-VCC nur 3,3 V; GDO-Pins sind derzeit unbenutzt.")
             return 0
+        if args.bus == 0 and not args.allow_spi0 and spi0_used_by_pironman():
+            print("CC1101: SPI0 wird von den Pironman-5-RGB-LEDs genutzt. CC1101 an SPI1 "
+                  "anschliessen (cc1101 wiring) oder bewusst --allow-spi0 angeben.",
+                  file=sys.stderr)
+            return 2
         try:
             result = probe(bus=args.bus, device=args.device)
         except (CC1101ProbeError, ValueError) as exc:

@@ -2,12 +2,6 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
-*.sqlite3
-*.sqlite3-*
-*.cu8
-*.iq
-*.bin
-*.log
 
 # MB-RF-Scan: private Daten niemals committen
 .env
@@ -26,3 +20,4 @@ __pycache__/
 *.log
 captures/
 recordings/
+iq-traces/

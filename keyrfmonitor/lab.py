@@ -135,9 +135,8 @@ def virtual_replay(bits: str, config: RFConfig | None = None) -> dict:
         channels[:, 1] = np.clip(127.5 + wave.imag + rng.normal(0, 1.5, samples), 0, 255).astype(np.uint8)
         detector.process(channels.tobytes())
     detector.finish()
-    events = detector.events
     return {"medium": "virtual_only", "rf_transmitted": False,
-            "bursts": sum(event['kind']=='burst' for event in events),
-            "pairs": sum(event['kind']=='pair' for event in events),
+            "bursts": detector.burst_count,
+            "pairs": detector.pair_count,
             "duration_s": round(total_frames * cfg.frame_ms/1000, 3),
             "test_bits": CODE_BITS}

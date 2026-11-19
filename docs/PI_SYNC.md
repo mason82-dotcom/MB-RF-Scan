@@ -99,6 +99,10 @@ Bei Bedarf einmal sofort synchronisieren: `systemctl --user start mb-rf-scan-syn
 
 Der Webdienst ist eine systemd-`Type=simple`-Unit. `systemctl --user restart` kann erfolgreich zurückkehren, bevor `127.0.0.1:8890` gebunden ist. Deshalb wartet `sync-from-github.sh` ab dem nächsten Commit bis zu 20 Sekunden auf **Dienststatus aktiv** und die HTTP-API `/api/status`. Ein einzelnes `curl: (7) Failed to connect` löst keinen sofortigen Rollback mehr aus.
 
+Seit v0.9.5 laufen die Unit-Tests zuerst in einer getrennten Kopie des neuen Commits (`git archive` in ein temporäres Verzeichnis). Der Live-Checkout wird erst danach per Fast-Forward geändert und unmittelbar anschließend neu gestartet; der laufende Dienst liefert also während der Tests keine neuen Dateien aus. Wird das Skript nach dem Fast-Forward abgebrochen (Fehler, Strg+C, Timer-Timeout), setzt ein Exit-Trap auf den vorherigen Commit zurück und startet den Dienst neu.
+
+Ein fehlgeschlagener Commit wird in `~/.local/share/keyrfmonitor/mb-rf-scan-sync.bad` vermerkt und vom stündlichen Timer nicht erneut versucht, bis ein neuerer Commit auf `main` liegt. Einen ausdrücklichen neuen Versuch startet `MB_RF_SCAN_SYNC_RETRY=1 bash scripts/pi/sync-from-github.sh`.
+
 Wenn der Webtest weiterhin fehlschlägt, werden Dienststatus und letzte Journalzeilen ausgegeben, anschließend erfolgt ein Git-Rollback und ein erneuter Bereitschaftstest des alten Webdienstes. Ein Git-Rollback behebt keine Probleme wie Portkonflikte, fehlende Rechte oder unvollständige systemd-Konfiguration.
 
 Sicher prüfen:

@@ -6,7 +6,8 @@ mkdir -p "$UNIT_DIR"
 cat > "$UNIT_DIR/keyrfmonitor.service" <<EOF
 [Unit]
 Description=KeyRFMonitor - passive local RF dashboard (SDR starts only on user request)
-After=default.target
+Wants=network-online.target
+After=default.target network-online.target
 
 [Service]
 Type=simple
@@ -21,7 +22,10 @@ UMask=0077
 WantedBy=default.target
 EOF
 systemctl --user daemon-reload
-systemctl --user enable --now keyrfmonitor.service
+systemctl --user enable keyrfmonitor.service
+# restart statt 'enable --now': ein bereits laufender Dienst uebernimmt sonst
+# WorkingDirectory und ExecStart erst beim naechsten Neustart.
+systemctl --user restart keyrfmonitor.service
 systemctl --user --no-pager status keyrfmonitor.service
 printf '\nWeb-UI: http://127.0.0.1:8890 (nur Pi bzw. SSH-Tunnel)\n'
 printf 'Der Dienst startet KEINE SDR-Messung automatisch und aendert ADS-B nicht.\n'

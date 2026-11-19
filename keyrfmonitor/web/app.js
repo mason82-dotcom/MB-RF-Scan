@@ -356,7 +356,7 @@ const IQ_REFRESH_INTERVAL_MS=4000;
 
 async function iqFetch(path){
  const result=await fetch(path,{cache:'no-store'});
- if(!result.ok)throw new Error('HTTP '+result.status);
+ if(!result.ok){const err=new Error('HTTP '+result.status);err.status=result.status;throw err;}
  return await result.json();
 }
 /* Explicit user-initiated exports only; no scans or SDR device actions. */
@@ -588,7 +588,10 @@ async function refreshIQTraces(){
   const data=await iqFetch('/api/iq/traces');
   const incoming=data.traces;
   const signature=incoming.map(t=>t.id).join(',');
-  if(signature===iqLastInventoryIds && (iqCurrent || !incoming.length))return;
+  // Only skip when the selected trace is actually loaded; a failed load of a
+  // new burst is retried on the next poll instead of sticking forever.
+  if(signature===iqLastInventoryIds &&
+     (!incoming.length || (iqCurrent && iqCurrent.id===$('iq-choice').value)))return;
   const wasLatest=iqTraces.length?iqTraces[0].id:null;
   const choice=$('iq-choice'),previous=choice.value;
   iqTraces=incoming;
@@ -761,21 +764,49 @@ function renderIQPairQuality(report){
  drawIQEnvelope(a,b);
  renderIQSensitivity(a,b);
 }
+let iqQualityPending=false;
 async function refreshIQPairQuality(){
- if(iqQualityBusy)return;
+ // A selection made while a request is running is remembered and loaded
+ // right after it, instead of being dropped.
+ if(iqQualityBusy){iqQualityPending=true;return;}
  const choice=$('iq-quality-pair'),number=Number(choice.value);
  if(!Number.isInteger(number)||number<1)return;
+ const option=choice.selectedOptions[0];
+ const firstId=option?option.dataset.first:'',secondId=option?option.dataset.second:'';
  const signature=choice.value+'|'+iqPairSignature;
  if(signature===iqQualityLastSignature)return;
  iqQualityBusy=true;
+ iqQualityPending=false;
  try{
   $('iq-quality-status').textContent='Berechne I/Q-Hüllkurven aus lokal gespeicherten Signalen …';
-  const report=await iqFetch('/api/iq/pair-quality?pair='+number);
+  let path='/api/iq/pair-quality?pair='+number;
+  if(firstId&&secondId)path+='&first='+encodeURIComponent(firstId)+'&second='+encodeURIComponent(secondId);
+  let report;
+  try{
+   report=await iqFetch(path);
+  }catch(err){
+   if(err.status===412){
+    // The archive changed in between: rebuild the pair list on the next poll.
+    iqPairSignature='';
+    $('iq-quality-status').textContent='Paarliste hat sich geändert, wird neu geladen …';
+    return;
+   }
+   throw err;
+  }
   if(choice.value!==String(number))return;
+  if(firstId&&(report.first.id!==firstId||report.second.id!==secondId)){
+   iqPairSignature='';
+   $('iq-quality-status').textContent='Paarliste hat sich geändert, wird neu geladen …';
+   return;
+  }
   renderIQPairQuality(report);
   iqQualityLastSignature=signature;
  }finally{
   iqQualityBusy=false;
+  if(iqQualityPending){
+   iqQualityPending=false;
+   refreshIQPairQuality().catch(iqQualityError);
+  }
  }
 }
 function iqQualityError(err){
@@ -801,6 +832,7 @@ async function refreshIQPairs(){
   for(const pair of data.pairs){
    const option=document.createElement('option');
    option.value=String(pair.index);
+   option.dataset.first=pair.first.id;option.dataset.second=pair.second.id;
    option.textContent='Paar '+pair.index+' · '+fmtTime(pair.first.event_at);
    pairSelect.append(option);
   }

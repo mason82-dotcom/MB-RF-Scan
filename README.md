@@ -6,7 +6,7 @@
 
 ## Funktionsumfang
 
-- Lokales Web-Dashboard (nur `127.0.0.1:8765`, ohne öffentliches Netzwerkinterface)
+- Lokales Web-Dashboard auf `127.0.0.1:8890`, optional zusätzlich nur im Heimnetz auf `192.168.178.63:8890` (kein Wildcard-Bind, keine Portfreigabe)
 - Passive Überwachung der **zwei gemessenen FSK-Frequenzlagen** ohne Bit- oder Protokolldekodierung
 - Automatische Burst-Erkennung anhand 10-ms-Spektralfenstern und adaptiver Rauschreferenz
 - Erkennung von Burst-Paaren anhand des **Abstands der Burst-Anfänge (400–650 ms)**
@@ -46,18 +46,18 @@ sudo apt update
 sudo apt install -y rtl-sdr python3-numpy
 cd ~/Projekte/KeyRFMonitor
 /usr/bin/python3 -m unittest discover -s tests -v
-/usr/bin/python3 -m keyrfmonitor serve
+/usr/bin/python3 -m keyrfmonitor serve --port 8890
 ```
 
-Lokale Anzeige auf dem Pi: `http://127.0.0.1:8765`
+Lokale Anzeige auf dem Pi: `http://127.0.0.1:8890` (gleicher Port wie der systemd-Dienst aus `scripts/install-user-service.sh`)
 
 Per SSH-Tunnel von einem anderen Rechner (Beispiel, auf dem **Client** ausführen):
 
 ```bash
-ssh -L 8765:127.0.0.1:8765 mason@rpi5
+ssh -L 8890:127.0.0.1:8890 mason@rpi5
 ```
 
-Danach auf dem Client `http://127.0.0.1:8765` aufrufen. Nur auf einem vertrauenswürdigen Rechner und in einer vertrauenswürdigen SSH-Sitzung öffnen.
+Danach auf dem Client `http://127.0.0.1:8890` aufrufen. Nur auf einem vertrauenswürdigen Rechner und in einer vertrauenswürdigen SSH-Sitzung öffnen.
 
 ### Optional: Autostart der lokalen Weboberfläche
 
@@ -78,16 +78,19 @@ systemctl --user stop keyrfmonitor.service
 **Wichtig:** Die Vorbereitung verursacht keine HF-Aussendung und setzt weder einen CC1101-Chip noch eine freie SPI-Schnittstelle voraus. Der vorhandene RTL-SDR-Monitor funktioniert unverändert weiter.
 
 ```bash
-cd ~/Projekte/KeyRFMonitor
+cd ~/Projekte/MB-RF-Scan
 /usr/bin/python3 -m keyrfmonitor cc1101 wiring
 ```
 
 **Erst nachdem ein CC1101-Modul korrekt angeschlossen wurde:** SPI gezielt auf dem Pi aktivieren, `python3-spidev` installieren und den Registertest manuell ausführen:
 
+Standard ist **SPI1/CE0** (Pins 40/38/35/12), weil die Pironman-5-RGB-LEDs SPI0 belegen. `cc1101 probe --bus 0` wird verweigert, solange Pironman 5 die LEDs über SPI0 steuert (bewusst übersteuerbar mit `--allow-spi0`).
+
 ```bash
-sudo raspi-config nonint do_spi 0
+echo 'dtoverlay=spi1-1cs' | sudo tee -a /boot/firmware/config.txt
 sudo apt install -y python3-spidev
-ls -l /dev/spidev0.0
+sudo reboot
+ls -l /dev/spidev1.0
 /usr/bin/python3 -m keyrfmonitor cc1101 probe
 ```
 
