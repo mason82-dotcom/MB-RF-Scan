@@ -122,6 +122,12 @@ def main(argv=None) -> int:
                            help="Messdauer in Sekunden (1 bis 3600)")
     cc_listen.add_argument("--database", default=None,
                            help="SQLite-Datei (Standard wie Webdienst)")
+    cc_lab = cc_sub.add_parser(
+        "lab-tx", help="Festes GFSK-Testpaket: Standard nur Vorschau, TX nur am HF-Laborabschluss")
+    cc_lab.add_argument("--execute", action="store_true",
+                        help="Einmaliges Testpaket wirklich senden (nur interaktives Terminal)")
+    cc_lab.add_argument("--confirm-conducted", action="store_true",
+                        help="50-Ohm-Last, Daempfung und abgeschirmte Messanordnung wurden geprueft")
     args = parser.parse_args(argv)
     if args.cmd == "cc1101":
         from .hardware.cc1101 import (
@@ -139,6 +145,34 @@ def main(argv=None) -> int:
                 print("-", item)
             print("CC1101-VCC nur 3,3 V. GDO0 = Carrier Sense, GDO2 hochohmig; "
                   "kein Datenausgang.")
+            return 0
+        if args.cc_action == "lab-tx":
+            from .hardware.cc1101_tx_lab import LabTxError, plan, run_one_shot
+            if not args.execute:
+                print(json.dumps(plan(), indent=2, ensure_ascii=False))
+                return 0
+            if not args.confirm_conducted:
+                print("TX gesperrt: --confirm-conducted fehlt.", file=sys.stderr)
+                return 2
+            if not sys.stdin.isatty():
+                print("TX gesperrt: nur interaktives Terminal, kein Cron/Web/API.", file=sys.stderr)
+                return 2
+            print("WARNUNG: Es wird ein ECHTES Funksignal erzeugt. Nur abgeschirmte "
+                  "HF-Messstrecke mit 50-Ohm-Last und Daempfung, keine Antenne.")
+            try:
+                answer = input("Zum einmaligen Senden exakt SEND 1 LAB PACKET eingeben: ")
+            except (EOFError, KeyboardInterrupt):
+                print("Abgebrochen; keine TX-Freigabe.", file=sys.stderr)
+                return 2
+            if answer != "SEND 1 LAB PACKET":
+                print("Keine TX-Freigabe. Es wurde nichts gesendet.", file=sys.stderr)
+                return 2
+            try:
+                result = run_one_shot(confirmed=True)
+            except (LabTxError, OSError) as exc:
+                print(f"Lab-TX FEHLER: {exc}", file=sys.stderr)
+                return 2
+            print(json.dumps(result, indent=2, ensure_ascii=False))
             return 0
         if args.cc_action == "listen":
             return _cc1101_listen(args.seconds, args.database)

@@ -2,7 +2,23 @@
 
 **Eigenständiger passiver RF-Monitor für Raspberry Pi 5 und RTL-SDR.**
 
-**Version:** 0.3.0 (befristeter ADS-B-Scanmodus; CC1101-Simulator und SPI-Vorbereitung, kein CC1101-Hardwarebetrieb). Dieses Projekt ist **vollständig unabhängig von AeroNexusAdvanced**: kein Import, kein gemeinsamer Dienst, kein gemeinsames Repository, kein gemeinsamer Speicher und kein Zugriff auf dessen Dateien.
+**Historischer Ausgangsstand:** 0.3.0 (befristeter ADS-B-Scanmodus; CC1101-Simulator und SPI-Vorbereitung). Neuere Funktionen ab 0.8 und CC1101-RX ab 0.10 siehe unten. Dieses Projekt ist **vollständig unabhängig von AeroNexusAdvanced**: kein Import, kein gemeinsamer Dienst, kein gemeinsames Repository, kein gemeinsamer Speicher und kein Zugriff auf dessen Dateien.
+
+## Neu: CC1101-HF-Labor-Sendeausgang (nur Entwicklungsbranch)
+
+Der CC1101-Empfang über SPI1/CE0 bleibt unabhängig vom RTL-SDR und strikt
+RX-only. Zusätzlich wird eine **separate** Laborsende-Komponente für ein
+festes GFSK-Testpaket bei 433,400 MHz vorbereitet. Ohne expliziten,
+interaktiven Terminal-Aufruf wird niemals gesendet. Keine Fahrzeugtelegramme,
+keine beliebigen Nutzdaten, keine Sende-Funktion im Webserver.
+
+- **Kein Funk-Test mit Antenne:** nur abgeschirmte, leitungsgebundene
+  50-Ohm-Messstrecke und geprüfte Festdämpfung.
+- Vorschau ohne Hardwarezugriff: `/usr/bin/python3 -m keyrfmonitor cc1101 lab-tx`
+- Vollständige Pin-, HF-, Sicherheits- und Abnahmehinweise:
+  [docs/CC1101_LAB_TX.md](docs/CC1101_LAB_TX.md).
+- **Hardware-TX-Abnahme ausstehend**: die Software-Prüfung ist kein
+  Nachweis für einen normkonformen, funktionierenden Sender.
 
 ## Funktionsumfang
 
