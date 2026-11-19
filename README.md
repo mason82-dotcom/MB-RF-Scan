@@ -78,16 +78,19 @@ systemctl --user stop keyrfmonitor.service
 **Wichtig:** Die Vorbereitung verursacht keine HF-Aussendung und setzt weder einen CC1101-Chip noch eine freie SPI-Schnittstelle voraus. Der vorhandene RTL-SDR-Monitor funktioniert unverändert weiter.
 
 ```bash
-cd ~/Projekte/KeyRFMonitor
+cd ~/Projekte/MB-RF-Scan
 /usr/bin/python3 -m keyrfmonitor cc1101 wiring
 ```
 
 **Erst nachdem ein CC1101-Modul korrekt angeschlossen wurde:** SPI gezielt auf dem Pi aktivieren, `python3-spidev` installieren und den Registertest manuell ausführen:
 
+Standard ist **SPI1/CE0** (Pins 40/38/35/12), weil die Pironman-5-RGB-LEDs SPI0 belegen. `cc1101 probe --bus 0` wird verweigert, solange Pironman 5 die LEDs über SPI0 steuert (bewusst übersteuerbar mit `--allow-spi0`).
+
 ```bash
-sudo raspi-config nonint do_spi 0
+echo 'dtoverlay=spi1-1cs' | sudo tee -a /boot/firmware/config.txt
 sudo apt install -y python3-spidev
-ls -l /dev/spidev0.0
+sudo reboot
+ls -l /dev/spidev1.0
 /usr/bin/python3 -m keyrfmonitor cc1101 probe
 ```
 

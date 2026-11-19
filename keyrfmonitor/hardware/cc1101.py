@@ -7,27 +7,56 @@ The probe only reads the PARTNUM and VERSION status registers. No RF mode is set
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import json
+from pathlib import Path
 from typing import Callable
+
+
+# Default wiring: SPI1 / CE0. On this Pi, SPI0 (/dev/spidev0.0, GPIO10 MOSI)
+# drives the Pironman 5 RGB LEDs; a CC1101 on SPI0/CE0 would see every LED
+# update as SPI traffic with its chip select asserted.
+DEFAULT_SPI_BUS = 1
+DEFAULT_SPI_DEVICE = 0
+SPI1_OVERLAY = "dtoverlay=spi1-1cs"
+PIRONMAN5_CONFIG = Path("/opt/pironman5/config.json")
 
 
 @dataclass(frozen=True)
 class Wiring:
-    """Raspberry Pi 40-pin header <-> 3.3V CC1101 module, default SPI0 CE0."""
+    """Raspberry Pi 40-pin header <-> 3.3V CC1101 module, default SPI1 CE0."""
 
-    vcc: str = "3V3: Pin 1 -> CC1101 VCC (niemals 5 V)"
-    gnd: str = "GND: Pin 6 -> CC1101 GND"
-    sclk: str = "GPIO11/SPI0 SCLK: Pin 23 -> CC1101 SCLK"
-    mosi: str = "GPIO10/SPI0 MOSI: Pin 19 -> CC1101 SI/MOSI"
-    miso: str = "GPIO9/SPI0 MISO: Pin 21 -> CC1101 SO/MISO"
-    csn: str = "GPIO8/SPI0 CE0: Pin 24 -> CC1101 CSn"
+    vcc: str = "3V3: Pin 17 (oder 1) -> CC1101 VCC (niemals 5 V)"
+    gnd: str = "GND: Pin 39 (oder 6/9/14) -> CC1101 GND"
+    sclk: str = "GPIO21/SPI1 SCLK: Pin 40 -> CC1101 SCLK"
+    mosi: str = "GPIO20/SPI1 MOSI: Pin 38 -> CC1101 SI/MOSI"
+    miso: str = "GPIO19/SPI1 MISO: Pin 35 -> CC1101 SO/MISO"
+    csn: str = "GPIO18/SPI1 CE0: Pin 12 -> CC1101 CSn"
     gdo0: str = "GPIO25: Pin 22 -> CC1101 GDO0 (optional, spaeter)"
     gdo2: str = "GPIO24: Pin 18 -> CC1101 GDO2 (optional, spaeter)"
-    note: str = ("Hinweis: Pironman 5 nutzt SPI0 fuer seine RGB-LEDs; dann SPI1 verwenden "
-                 "(Pins 40/38/35/12, dtoverlay=spi1-1cs, probe --bus 1), siehe docs/CC1101.md")
+    overlay: str = f"/boot/firmware/config.txt: {SPI1_OVERLAY} -> /dev/spidev1.0"
 
 
 def wiring_lines() -> tuple[str, ...]:
     return tuple(asdict(Wiring()).values())
+
+
+def spi_device_path(bus: int, device: int) -> Path:
+    return Path(f"/dev/spidev{bus}.{device}")
+
+
+def spi0_used_by_pironman(config_path: Path = PIRONMAN5_CONFIG) -> bool:
+    """True if the Pironman 5 service drives its WS2812 LEDs over SPI0."""
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    # The setting is stored either top-level or under "system".
+    for section in (data, data.get("system")):
+        if isinstance(section, dict) and section.get("rgb_enable") is True:
+            return True
+    return False
 
 
 class CC1101ProbeError(RuntimeError):
@@ -43,7 +72,8 @@ def _valid_address(bus: int, device: int, speed_hz: int) -> None:
         raise ValueError("SPI-Takt fuer Diagnose muss 10 kHz bis 1 MHz betragen")
 
 
-def probe(bus: int = 0, device: int = 0, speed_hz: int = 500_000,
+def probe(bus: int = DEFAULT_SPI_BUS, device: int = DEFAULT_SPI_DEVICE,
+          speed_hz: int = 500_000,
           spi_factory: Callable | None = None) -> dict:
     """Read two CC1101 status registers; NEVER change radio state or transmit.
 
@@ -56,6 +86,11 @@ def probe(bus: int = 0, device: int = 0, speed_hz: int = 500_000,
     """
     _valid_address(bus, device, speed_hz)
     if spi_factory is None:
+        node = spi_device_path(bus, device)
+        if not node.exists():
+            hint = (f" SPI1 aktivieren: '{SPI1_OVERLAY}' in /boot/firmware/config.txt, dann neu starten."
+                    if bus == 1 else "")
+            raise CC1101ProbeError(f"{node} fehlt.{hint}")
         try:
             import spidev  # Optional system dependency, import only for explicit probe.
         except ImportError as exc:

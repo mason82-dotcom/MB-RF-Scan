@@ -14,7 +14,7 @@
 - `install-user-service.sh` startet einen laufenden Dienst neu, damit geänderte Pfade wirksam werden; Unit wartet auf `network-online.target`.
 - `import-from-keyrfmonitor.sh`: Positivliste für Quelltext/Doku, exakte Remote-Prüfung, `.gitignore` ohne doppelte Einträge.
 - README: Port 8890 statt 8765 für Dienst und SSH-Tunnel.
-- CC1101-Doku: Anschluss an SPI1 (Pins 40/38/35/12, `dtoverlay=spi1-1cs`), weil Pironman 5 SPI0 für seine RGB-LEDs nutzt; `cc1101 wiring` gibt den Hinweis aus.
+- CC1101 im Code auf **SPI1/CE0** verdrahtet (Pins 40/38/35/12, `dtoverlay=spi1-1cs`), weil Pironman 5 SPI0 für seine RGB-LEDs nutzt: `cc1101 wiring` und `cc1101 probe` verwenden SPI1 als Standard, fehlendes `/dev/spidev1.0` wird mit Overlay-Hinweis gemeldet, `--bus 0` wird bei aktiven Pironman-RGB-LEDs abgelehnt (`--allow-spi0` übersteuert).
 - Testkorrektur: Paar-Hüllkurventest nutzt eine feste Zeitbasis und schlägt unter Last nicht mehr sporadisch fehl.
 - Neue Regressionstests (`tests/test_review_fixes.py`), u. a. ein Ablauftest des Sync-Skripts gegen ein lokales Repository mit simuliertem systemd.
 
