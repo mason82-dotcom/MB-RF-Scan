@@ -394,6 +394,9 @@ class SummaryHTTPTests(unittest.TestCase):
         archive = TraceArchive(self.db.parent / "iq-traces")
         cfg = RFConfig()
         ms = cfg.sample_rate // 1000
+        # One fixed origin: a slow save on a loaded machine must not push the
+        # second burst outside the 400–650 ms pairing window.
+        origin = datetime.now(timezone.utc)
         # Pair 2 has a constant-energy first burst and a weak, but nonzero,
         # 19 ms section that falls below 8 dB, not below 7 dB.
         for index in range(2):
@@ -406,7 +409,7 @@ class SummaryHTTPTests(unittest.TestCase):
             )
             event = {
                 "kind": "burst",
-                "at": (datetime.now(timezone.utc) +
+                "at": (origin +
                        timedelta(milliseconds=index * 510)).isoformat(),
                 "start_s": 0.020, "end_s": 0.200,
                 "duration_ms": 180.0, "peak_snr_db": 30.0,

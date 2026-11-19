@@ -6,7 +6,7 @@
 
 ## Funktionsumfang
 
-- Lokales Web-Dashboard (nur `127.0.0.1:8765`, ohne öffentliches Netzwerkinterface)
+- Lokales Web-Dashboard auf `127.0.0.1:8890`, optional zusätzlich nur im Heimnetz auf `192.168.178.63:8890` (kein Wildcard-Bind, keine Portfreigabe)
 - Passive Überwachung der **zwei gemessenen FSK-Frequenzlagen** ohne Bit- oder Protokolldekodierung
 - Automatische Burst-Erkennung anhand 10-ms-Spektralfenstern und adaptiver Rauschreferenz
 - Erkennung von Burst-Paaren anhand des **Abstands der Burst-Anfänge (400–650 ms)**
@@ -46,18 +46,18 @@ sudo apt update
 sudo apt install -y rtl-sdr python3-numpy
 cd ~/Projekte/KeyRFMonitor
 /usr/bin/python3 -m unittest discover -s tests -v
-/usr/bin/python3 -m keyrfmonitor serve
+/usr/bin/python3 -m keyrfmonitor serve --port 8890
 ```
 
-Lokale Anzeige auf dem Pi: `http://127.0.0.1:8765`
+Lokale Anzeige auf dem Pi: `http://127.0.0.1:8890` (gleicher Port wie der systemd-Dienst aus `scripts/install-user-service.sh`)
 
 Per SSH-Tunnel von einem anderen Rechner (Beispiel, auf dem **Client** ausführen):
 
 ```bash
-ssh -L 8765:127.0.0.1:8765 mason@rpi5
+ssh -L 8890:127.0.0.1:8890 mason@rpi5
 ```
 
-Danach auf dem Client `http://127.0.0.1:8765` aufrufen. Nur auf einem vertrauenswürdigen Rechner und in einer vertrauenswürdigen SSH-Sitzung öffnen.
+Danach auf dem Client `http://127.0.0.1:8890` aufrufen. Nur auf einem vertrauenswürdigen Rechner und in einer vertrauenswürdigen SSH-Sitzung öffnen.
 
 ### Optional: Autostart der lokalen Weboberfläche
 

@@ -30,6 +30,7 @@ class Monitor:
         self.detector: PassiveDetector | None = None
         self.started_at = None
         self._device_lock_fd: int | None = None
+        self._adsb_cache: tuple[float, bool] | None = None
 
     def _claim_device(self) -> bool:
         """Process-wide advisory lock: dashboard and CLI must not race for SDR."""
@@ -188,9 +189,25 @@ class Monitor:
         finally:
             os.close(fd)
 
+    ADSB_STATUS_TTL_S = 1.0
+
+    def _adsb_active_cached(self) -> bool:
+        """Short-lived cache for status polls; start() always queries fresh."""
+        now = time.monotonic()
+        cached = self._adsb_cache
+        if cached is not None and now - cached[0] < self.ADSB_STATUS_TTL_S:
+            return cached[1]
+        active = self.adsb_active()
+        self._adsb_cache = (time.monotonic(), active)
+        return active
+
     def status(self) -> dict:
+        # systemctl (up to 3 s) and the lock-file probe run OUTSIDE self.lock,
+        # so the 10 ms SDR reader thread is never blocked by status polling.
+        adsb = self._adsb_active_cached()
+        external = self._device_in_use_elsewhere()
         with self.lock:
-            obj = {"state": self.state, "adsb_active": self.adsb_active(),
+            obj = {"state": self.state, "adsb_active": adsb,
                    "error": self.last_error, "stderr": list(self.stderr_tail)[-4:],
                    "frequency_hz": self.config.center_hz,
                    "gain_db": self.config.gain_db,
@@ -199,7 +216,8 @@ class Monitor:
                    "iq_trace_enabled": self.trace is not None,
                    "iq_trace_saved": self.trace.saved if self.trace else 0,
                    "iq_trace_skipped": self.trace.skipped if self.trace else 0,
-                   "external_scan_active": self._device_in_use_elsewhere()}
+                   "iq_trace_errors": getattr(self.trace, "errors", 0) if self.trace else 0,
+                   "external_scan_active": external}
             if self.detector is not None:
                 obj.update(self.detector.status())
             return obj

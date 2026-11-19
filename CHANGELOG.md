@@ -1,5 +1,24 @@
 # Änderungsprotokoll
 
+## v0.9.5 – Code-Review: Robustheit von Empfang, Archiv, Dashboard und Pi-Skripten
+
+- Fehler beim Schreiben des optionalen I/Q-Archivs (Platte voll, E/A-Fehler, ungültiges Burstfenster) beenden den Empfang nicht mehr; der Burst wird als nicht erfasst gezählt, der Status nennt `iq_trace_errors`.
+- Eine beschädigte Metadatei (kein JSON-Objekt, `decoder: null`) blendet nicht mehr das ganze I/Q-Archiv aus; alle I/Q-Endpunkte antworten bei beschädigten oder fehlenden Dateien mit 409/400 statt die Verbindung abzubrechen.
+- CU8-Lesezugriffe für Seitenansicht, Bit-Hypothese und Hüllkurve öffnen nicht blockierend und nur reguläre Dateien; ein FIFO kann keine Decoder-Slots mehr dauerhaft belegen.
+- Archivliste mit Zwischenspeicher je Datei (Änderungszeit und Größe) statt vollständigem JSON-Parsen bei jeder Abfrage.
+- `/api/status` fragt `systemctl` außerhalb der Empfängersperre ab (1 s zwischengespeichert); der 10-ms-Lesethread wird nicht mehr blockiert. Detektor hält nur die letzten 256 Ereignisse im Speicher, Burstzähler konstant.
+- Paarqualität: optionale Parameter `first`/`second` mit den Trace-IDs; ändert sich die Paarliste zwischenzeitlich, antwortet der Server mit 412 und das Dashboard lädt die Liste neu, statt Hüllkurven eines anderen Paares anzuzeigen.
+- Dashboard: Paarwahl während einer laufenden Berechnung geht nicht mehr verloren; scheitert das Laden eines neuen Bursts, wird es beim nächsten Abgleich wiederholt.
+- LAN-Listener: Ist `192.168.178.63` beim Start noch nicht vorhanden, läuft das lokale Dashboard weiter und der LAN-Bind wird alle 5 s wiederholt (weiterhin kein Wildcard-Socket).
+- `sync-from-github.sh`: Tests in einer getrennten Kopie vor dem Fast-Forward, Exit-Trap mit Rollback bei Abbruch, fehlgeschlagene Commits werden nicht stündlich erneut versucht (`MB_RF_SCAN_SYNC_RETRY=1` für einen bewussten neuen Versuch), Bereitschaftsprüfung ohne Proxy.
+- `install-user-service.sh` startet einen laufenden Dienst neu, damit geänderte Pfade wirksam werden; Unit wartet auf `network-online.target`.
+- `import-from-keyrfmonitor.sh`: Positivliste für Quelltext/Doku, exakte Remote-Prüfung, `.gitignore` ohne doppelte Einträge.
+- README: Port 8890 statt 8765 für Dienst und SSH-Tunnel.
+- CC1101-Doku: Anschluss an SPI1 (Pins 40/38/35/12, `dtoverlay=spi1-1cs`), weil Pironman 5 SPI0 für seine RGB-LEDs nutzt; `cc1101 wiring` gibt den Hinweis aus.
+- Testkorrektur: Paar-Hüllkurventest nutzt eine feste Zeitbasis und schlägt unter Last nicht mehr sporadisch fehl.
+- Neue Regressionstests (`tests/test_review_fixes.py`), u. a. ein Ablauftest des Sync-Skripts gegen ein lokales Repository mit simuliertem systemd.
+
+
 ## v0.9.4 – Bytegenauer Rohdatenexport im Heimnetz-Dashboard
 
 - Zwei explizite Download-Schaltflächen für originale `.cu8`-Samples und `.json`-Metadaten einer ausgewählten bestehenden Aufnahme.

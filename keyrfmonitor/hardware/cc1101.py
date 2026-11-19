@@ -22,6 +22,8 @@ class Wiring:
     csn: str = "GPIO8/SPI0 CE0: Pin 24 -> CC1101 CSn"
     gdo0: str = "GPIO25: Pin 22 -> CC1101 GDO0 (optional, spaeter)"
     gdo2: str = "GPIO24: Pin 18 -> CC1101 GDO2 (optional, spaeter)"
+    note: str = ("Hinweis: Pironman 5 nutzt SPI0 fuer seine RGB-LEDs; dann SPI1 verwenden "
+                 "(Pins 40/38/35/12, dtoverlay=spi1-1cs, probe --bus 1), siehe docs/CC1101.md")
 
 
 def wiring_lines() -> tuple[str, ...]:

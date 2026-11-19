@@ -67,7 +67,10 @@ class PassiveDetector:
         self.idle_levels: deque[float] = deque(maxlen=600)
         self.candidate: dict | None = None
         self.quiet_frames = 0
-        self.events: list[dict] = []
+        # Only the most recent events are kept in memory; long web measurements
+        # must not grow without bound (the SQLite store keeps the history).
+        self.events: deque[dict] = deque(maxlen=256)
+        self.burst_count = 0
         self.last_unpaired: dict | None = None
         self.pair_count = 0
         self.last_metric: dict = {}
@@ -107,6 +110,8 @@ class PassiveDetector:
 
     def _emit(self, event: dict, result: list[dict]) -> None:
         self.events.append(event)
+        if event.get("kind") == "burst":
+            self.burst_count += 1
         result.append(event)
         if self.on_event:
             self.on_event(event.copy())
@@ -198,6 +203,6 @@ class PassiveDetector:
         return {"processed_seconds": round(self.frame_index * self.config.frame_ms / 1000, 2),
                 "baseline_ready": self.baseline_db is not None,
                 "baseline_db": round(self.baseline_db, 1) if self.baseline_db is not None else None,
-                "burst_count": sum(e["kind"] == "burst" for e in self.events),
+                "burst_count": self.burst_count,
                 "pair_count": self.pair_count,
                 "signal": self.last_metric.copy()}

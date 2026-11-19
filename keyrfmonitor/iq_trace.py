@@ -109,6 +109,7 @@ class TraceArchive:
     """Private disk archive; API access is restricted to the configured LAN."""
 
     def __init__(self, path: Path):
+        self._summary_cache: dict[str, tuple[tuple[int, int], dict]] = {}
         self.path = Path(path).expanduser()
         if self.path.is_symlink():
             raise ValueError("Trace directory must not be a symlink")
@@ -133,6 +134,27 @@ class TraceArchive:
         except BaseException:
             path.unlink(missing_ok=True)
             raise
+
+    @staticmethod
+    def _open_cu8(path: Path):
+        """Open an archived CU8 file read-only without following symlinks.
+
+        O_NONBLOCK keeps a FIFO planted in place of the file from blocking the
+        request thread (and a decode slot) forever; non-regular files are
+        rejected before any read.
+        """
+        flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+                 | getattr(os, "O_NONBLOCK", 0))
+        descriptor = os.open(path, flags)
+        stream = os.fdopen(descriptor, "rb")
+        try:
+            details = os.fstat(stream.fileno())
+            if not stat.S_ISREG(details.st_mode):
+                raise ValueError("Archived CU8 is not a regular file")
+        except BaseException:
+            stream.close()
+            raise
+        return stream, details
 
     def _inventory(self) -> tuple[int, int]:
         files = list(self.path.glob("*.cu8"))
@@ -202,6 +224,8 @@ class TraceArchive:
         if not path.is_file() or path.is_symlink():
             return None
         data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("Trace metadata is not a JSON object")
         if data.get("id") != trace_id or data.get("source") != "rtl_sdr":
             raise ValueError("Trace metadata inconsistent")
         return data
@@ -272,25 +296,49 @@ class TraceArchive:
             raise ArchiveExportError("CU8 file does not match IQ metadata")
         return raw
 
+    @staticmethod
+    def _summary(meta: dict) -> dict:
+        decoder = meta["decoder"]
+        if not isinstance(decoder, dict) or not isinstance(decoder.get("bits"), str):
+            raise ValueError("Invalid decoder metadata")
+        return {
+            "id": meta["id"], "saved_at": meta["saved_at"],
+            "event_at": meta["event_at"], "duration_ms": meta["duration_ms"],
+            "peak_snr_db": meta["peak_snr_db"],
+            "sample_count": meta["sample_count"],
+            "symbol_count": len(decoder["bits"]),
+        }
+
     def list_recent(self, limit: int = 48) -> list[dict]:
         if type(limit) is not int or not 1 <= limit <= 100:
             raise ValueError("Invalid trace list size")
         results = []
+        seen = set()
         for entry in self.path.glob("*.json"):
             if entry.is_symlink() or not TRACE_NAME.fullmatch(entry.stem):
                 continue
             try:
-                meta = self.read(entry.stem)
-                if meta:
-                    results.append({
-                        "id": meta["id"], "saved_at": meta["saved_at"],
-                        "event_at": meta["event_at"], "duration_ms": meta["duration_ms"],
-                        "peak_snr_db": meta["peak_snr_db"],
-                        "sample_count": meta["sample_count"],
-                        "symbol_count": len(meta["decoder"]["bits"]),
-                    })
-            except (OSError, ValueError, KeyError, json.JSONDecodeError):
+                details = entry.stat()
+                key = (details.st_mtime_ns, details.st_size)
+                seen.add(entry.stem)
+                cached = self._summary_cache.get(entry.stem)
+                if cached is not None and cached[0] == key:
+                    summary = cached[1]
+                else:
+                    meta = self.read(entry.stem)
+                    if not meta:
+                        continue
+                    summary = self._summary(meta)
+                    if not isinstance(summary["saved_at"], str):
+                        raise ValueError("Invalid saved_at")
+                    self._summary_cache[entry.stem] = (key, summary)
+                results.append(dict(summary))
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                # One corrupt metadata file must not hide the whole archive.
+                self._summary_cache.pop(entry.stem, None)
                 continue
+        for stale in set(self._summary_cache) - seen:
+            del self._summary_cache[stale]
         return sorted(results, key=lambda e: e["saved_at"], reverse=True)[:limit]
 
     def decode_hypothesis(self, trace_id: str, *, baud: int = NOMINAL_BAUD,
@@ -315,10 +363,9 @@ class TraceArchive:
                 or not 0 <= begin < end <= total):
             raise ValueError("Invalid active signal bounds")
         filename = self.path / (self._id(trace_id) + ".cu8")
-        descriptor = os.open(filename, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-        with os.fdopen(descriptor, "rb") as stream:
-            details = os.fstat(stream.fileno())
-            if not stat.S_ISREG(details.st_mode) or details.st_size != total * 2:
+        stream, details = self._open_cu8(filename)
+        with stream:
+            if details.st_size != total * 2:
                 raise ValueError("IQ file and stored metadata differ")
             raw = stream.read(total * 2)
         config = RFConfig(
@@ -359,10 +406,9 @@ class TraceArchive:
                 or not 0 <= first < last <= total):
             raise ValueError("Incompatible CU8 archive metadata")
         filename = self.path / (self._id(trace_id) + ".cu8")
-        descriptor = os.open(filename, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-        with os.fdopen(descriptor, "rb") as stream:
-            details = os.fstat(stream.fileno())
-            if not stat.S_ISREG(details.st_mode) or details.st_size != total * 2:
+        stream, details = self._open_cu8(filename)
+        with stream:
+            if details.st_size != total * 2:
                 raise ValueError("Stored CU8 file size differs from archive metadata")
             raw = stream.read(total * 2)
         if len(raw) != total * 2:
@@ -388,18 +434,18 @@ class TraceArchive:
         if meta is None:
             return None
         total = meta["sample_count"]
+        rate = meta.get("sample_rate")
+        if (type(total) is not int or total < 1
+                or type(rate) is not int or rate <= 0):
+            raise ValueError("Invalid archived sample metadata")
         if start >= total:
             raise ValueError("Sample start outside captured trace")
         expected = min(count, total - start)
-        filename = self.path / (trace_id + ".cu8")
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-        descriptor = os.open(filename, flags)
-        try:
-            with os.fdopen(descriptor, "rb") as stream:
-                stream.seek(start * 2)
-                raw = stream.read(expected * 2)
-        finally:
-            pass
+        filename = self.path / (self._id(trace_id) + ".cu8")
+        stream, _details = self._open_cu8(filename)
+        with stream:
+            stream.seek(start * 2)
+            raw = stream.read(expected * 2)
         if len(raw) != expected * 2:
             raise ValueError("Stored CU8 trace has an unexpected length")
         arr = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 2)
@@ -410,7 +456,7 @@ class TraceArchive:
             spectrum = np.fft.fftshift(np.fft.fft(z[:fft_size] * np.hanning(fft_size)))
             levels = 20 * np.log10(np.maximum(np.abs(spectrum), 1e-6))
             bins = min(256, fft_size)
-            frequency = np.fft.fftshift(np.fft.fftfreq(fft_size, 1 / meta["sample_rate"]))
+            frequency = np.fft.fftshift(np.fft.fftfreq(fft_size, 1 / rate))
             idx = np.linspace(0, fft_size - 1, bins, dtype=np.int64)
             plot_spectrum = [{"khz": round(float(frequency[j] / 1000), 2),
                               "db": round(float(levels[j]), 2)} for j in idx]
@@ -441,6 +487,7 @@ class TraceCollector:
         self.frames: deque[tuple[int, bytes]] = deque(maxlen=64)
         self.saved = 0
         self.skipped = 0
+        self.errors = 0
         self.archive_full = False
 
     def reset_scan(self) -> None:
@@ -448,6 +495,7 @@ class TraceCollector:
         self.frames.clear()
         self.saved = 0
         self.skipped = 0
+        self.errors = 0
         self.archive_full = False
 
     def record_frame(self, index: int, raw: bytes, events: list[dict]) -> None:
@@ -471,7 +519,20 @@ class TraceCollector:
                 continue
             first_frame = selected[0][0]
             raw_capture = b"".join(data for _, data in selected)
-            outcome = self.archive.save(raw_capture, event, self.config, first_frame)
+            try:
+                outcome = self.archive.save(raw_capture, event, self.config, first_frame)
+            except OSError:
+                # Disk/permission trouble in the optional IQ archive must not
+                # end the metadata scan: stop archiving for this scan only.
+                self.errors += 1
+                self.archive_full = True
+                self.skipped += 1
+                continue
+            except ValueError:
+                # A single malformed burst window is skipped, later ones still saved.
+                self.errors += 1
+                self.skipped += 1
+                continue
             if outcome is None:
                 self.archive_full = True
                 self.skipped += 1
