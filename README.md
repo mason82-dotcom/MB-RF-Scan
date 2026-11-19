@@ -2,7 +2,9 @@
 
 **Eigenständiger passiver RF-Monitor für Raspberry Pi 5 und RTL-SDR.**
 
-**Version:** 0.3.0 (befristeter ADS-B-Scanmodus; CC1101-Simulator und SPI-Vorbereitung, kein CC1101-Hardwarebetrieb). Dieses Projekt ist **vollständig unabhängig von AeroNexusAdvanced**: kein Import, kein gemeinsamer Dienst, kein gemeinsames Repository, kein gemeinsamer Speicher und kein Zugriff auf dessen Dateien.
+**HF-/Antennenanschluss:** Der CC1101 hat einen gemeinsamen, nach dem auf dem Trägermodul bestückten Matching-Netzwerk liegenden RF-Port, aber **keinen freigegebenen Sendebetrieb**. Physikalischer Anschluss, Prüfablauf und die Abgrenzung zu den Pi-SPI-Pins: [docs/HF_ANTENNA.md](docs/HF_ANTENNA.md).
+
+**Version:** 0.10.0 (RTL-SDR-Empfang und CC1101-RSSI-Empfang parallel zu ADS-B, keine HF-Sendefunktion). Dieses Projekt ist **vollständig unabhängig von AeroNexusAdvanced**: kein Import, kein gemeinsamer Dienst, kein gemeinsames Repository, kein gemeinsamer Speicher und kein Zugriff auf dessen Dateien.
 
 ## Funktionsumfang
 
