@@ -293,7 +293,7 @@ function renderEvents(items){
  if(!items.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=6;td.className='empty';td.textContent='Noch keine Ereignisse';tr.append(td);body.append(tr);return;}
  for(const event of items){
   const tr=document.createElement('tr');
-  const cells=[fmtTime(event.at),event.simulated?'Simulation':'RTL-SDR',event.kind==='pair'?'Burst-Paar':'Burst',
+  const cells=[fmtTime(event.at),event.simulated?'Simulation':event.source==='cc1101'?'CC1101':'RTL-SDR',event.kind==='pair'?'Burst-Paar':'Burst',
    event.kind==='pair'?`${event.start_gap_ms} ms Abstand`:`${event.duration_ms} ms`,
    event.kind==='burst'?`${event.peak_rise_db} dB`:'–',
    event.kind==='burst'?`${event.peak_snr_db} dB`:'–'];
@@ -335,7 +335,54 @@ $('session-detail-choice').addEventListener('change',()=>{
     $('session-detail-status').textContent='Sitzungsdetails nicht erreichbar: '+e.message;
   });
 });
+/* Receive-only CC1101 (ADR-0001): RSSI metadata, independent of ADS-B. */
+const ccStateText={stopped:'Gestoppt',starting:'Startet',running:'Empfang aktiv',stopping:'Wird beendet',error:'Fehler'};
+let ccPolling=false,ccStatusLost=false;
+const CC_STATUS_LOST='Status nicht abrufbar. Verbindung prüfen; die Anzeige versucht es jede Sekunde erneut.';
+function fmtDbm(v){return Number.isFinite(v)?v.toFixed(1).replace('.',',')+' dBm':'–'}
+function updateCC(c){
+ const active=['starting','running'].includes(c.state);
+ $('cc-start').disabled=active||c.state==='stopping';
+ $('cc-stop').disabled=!active;
+ $('cc-state').textContent=ccStateText[c.state]||c.state;
+ $('cc-summary').textContent=c.state==='running'?'Empfang aktiv':c.state==='error'?'Fehler':'Bereit · nur Empfang';
+ $('cc-rssi').textContent=c.state==='running'?fmtDbm(c.last_rssi_dbm)+(c.burst_active?' · Burst':c.long_carrier?' · Dauerträger':''):'–';
+ $('cc-baseline').textContent=c.state==='running'&&!c.baseline_ready?'Wird ermittelt …':fmtDbm(c.baseline_dbm);
+ $('cc-counts').textContent=(c.burst_count||0)+' / '+(c.pair_count||0);
+ $('cc-rate').textContent=c.sample_rate_hz?c.sample_rate_hz+' Hz · '+c.sample_gaps+' Lücken':'–';
+ $('cc-freq').textContent=c.frequency_hz?(c.frequency_hz/1e6).toFixed(4).replace('.',',')+' MHz':'–';
+ $('cc-error').hidden=!c.error;$('cc-error-text').textContent=c.error||'';
+ ccErrorDetail=c.error_detail||c.error||'';
+}
+let ccErrorDetail='';
+async function refreshCC(){
+ if(ccPolling)return;ccPolling=true;
+ try{const r=await fetch('/api/cc1101/rx/status',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);updateCC(await r.json());
+  if(ccStatusLost){ccStatusLost=false;$('cc-message').textContent=''}}
+ catch(e){ccStatusLost=true;$('cc-state').textContent='Nicht erreichbar';$('cc-message').textContent=CC_STATUS_LOST}
+ finally{ccPolling=false}
+}
+async function ccAction(path){
+ $('cc-start').disabled=true;$('cc-stop').disabled=true;
+ // Feedback stays in the card: the top notice is rewritten by the RTL-SDR poll.
+ $('cc-message').textContent=path.endsWith('start')?'CC1101 wird konfiguriert …':'CC1101 wird beendet …';
+ try{const res=await fetch(path,{method:'POST',headers:{'X-RFMonitor-Token':token}});
+  let body={};try{body=await res.json()}catch(_){}
+  // Start errors with state "error" appear in the error box; everything else
+  // (already running, nothing to stop, token expired) is reported here.
+  $('cc-message').textContent=body.message||(res.ok?'Erledigt.':`Aktion nicht ausgeführt (HTTP ${res.status}). Seite neu laden und erneut versuchen.`);
+ }catch(e){$('cc-message').textContent='Server nicht erreichbar. Verbindung prüfen und erneut versuchen.'}
+ await refreshCC();
+}
+$('cc-start').addEventListener('click',()=>ccAction('/api/cc1101/rx/start'));
+$('cc-stop').addEventListener('click',()=>ccAction('/api/cc1101/rx/stop'));
+$('cc-copy-error').addEventListener('click',()=>{
+ navigator.clipboard.writeText(ccErrorDetail)
+  .then(()=>{$('cc-message').textContent='Fehlerdetails kopiert.'})
+  .catch(()=>{$('cc-message').textContent='Kopieren nicht möglich: '+ccErrorDetail});
+});
 refresh();setInterval(refresh,1500);
+refreshCC();setInterval(refreshCC,1000);
 
 
 /* Automatically refreshed, receive-only real CU8 traces for manual scans. */

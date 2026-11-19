@@ -59,6 +59,10 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                       trace=TraceCollector(trace_archive, rf_config))
     lab = LabStore(Path(db_path).parent / "synthetic_lab.sqlite3")
     simulator = CC1101Simulator(store.insert)
+    # Receive-only CC1101 (ADR-0001): created idle, started only by an explicit
+    # POST. A flock on /dev/spidev1.0 keeps CLI listener and probe from racing.
+    from .hardware.cc1101_rx import CC1101Receiver
+    cc1101_rx = CC1101Receiver(store.insert)
     csrf = secrets.token_urlsafe(32)
 
     class Handler(BaseHTTPRequestHandler):
@@ -318,6 +322,8 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                 self._json({"sources": available_sources()})
             elif self.path == "/api/cc1101/status":
                 self._json(simulator.status())
+            elif self.path == "/api/cc1101/rx/status":
+                self._json(cc1101_rx.status())
             elif self.path == "/api/lab/codes":
                 self._json({"codes": lab.list_codes(), "mode": "virtual_only"})
             else:
@@ -333,6 +339,10 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
                 ok, message = monitor.start()
             elif self.path == "/api/stop":
                 ok, message = monitor.stop()
+            elif self.path == "/api/cc1101/rx/start":
+                ok, message = cc1101_rx.start()
+            elif self.path == "/api/cc1101/rx/stop":
+                ok, message = cc1101_rx.stop()
             elif self.path == "/api/cc1101/sim/start":
                 ok, message = simulator.start()
             elif self.path == "/api/cc1101/sim/stop":
@@ -441,6 +451,7 @@ def serve(host: str = "127.0.0.1", port: int = 8765,
         if httpd is not None:
             httpd.server_close()
         simulator.close()
+        cc1101_rx.close()
         monitor.close()
         store.close()
         lab.close()

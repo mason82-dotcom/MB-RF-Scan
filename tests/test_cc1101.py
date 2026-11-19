@@ -23,7 +23,9 @@ class FakeSPI:
 
     def xfer2(self, payload):
         self.commands.append(payload)
-        assert payload in ([0xF0, 0x00], [0xF1, 0x00]), "Unzulässiger SPI-Befehl"
+        assert payload in ([0x3D], [0xF0, 0x00], [0xF1, 0x00]), "Unzulässiger SPI-Befehl"
+        if payload == [0x3D]:
+            return [0x0F]  # SNOP wake-up strobe
         return [0x00, self.partnum if payload[0] == 0xF0 else self.version]
 
     def close(self):
@@ -35,12 +37,12 @@ class CC1101Tests(unittest.TestCase):
         spi = FakeSPI()
         result = probe(spi_factory=lambda: spi)
         self.assertEqual(spi.open_args, (1, 0))  # SPI1/CE0: SPI0 belongs to Pironman RGB
-        self.assertEqual(spi.commands, [[0xF0, 0x00], [0xF1, 0x00]])
+        self.assertEqual(spi.commands, [[0x3D], [0xF0, 0x00], [0xF1, 0x00]])
         self.assertEqual(spi.max_speed_hz, 500_000)
         self.assertTrue(spi.closed)
         self.assertTrue(result["cc1101_plausible"])
         self.assertFalse(result["tx_implemented"])
-        self.assertFalse(result["rx_implemented"])
+        self.assertTrue(result["rx_implemented"])  # RSSI receiver exists; probe itself only reads
 
     def test_disconnected_values_are_not_reported_as_chip(self):
         self.assertFalse(probe(spi_factory=lambda: FakeSPI(0xFF, 0xFF))["cc1101_plausible"])
@@ -124,7 +126,7 @@ class CC1101Tests(unittest.TestCase):
 
     def test_missing_spi_node_explains_overlay(self):
         from pathlib import Path
-        with patch("keyrfmonitor.hardware.cc1101.spi_device_path",
+        with patch("keyrfmonitor.hardware.cc1101_bus.spi_device_path",
                    return_value=Path("/nonexistent/spidev1.0")), \
                 patch.dict("sys.modules", {"spidev": None}):
             with self.assertRaises(CC1101ProbeError) as ctx:
