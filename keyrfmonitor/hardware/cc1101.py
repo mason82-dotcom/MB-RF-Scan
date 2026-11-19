@@ -40,10 +40,6 @@ def wiring_lines() -> tuple[str, ...]:
     return tuple(asdict(Wiring()).values())
 
 
-def spi_device_path(bus: int, device: int) -> Path:
-    return Path(f"/dev/spidev{bus}.{device}")
-
-
 def spi0_used_by_pironman(config_path: Path = PIRONMAN5_CONFIG) -> bool:
     """True if the Pironman 5 service drives its WS2812 LEDs over SPI0."""
     try:
@@ -85,6 +81,7 @@ def probe(bus: int = DEFAULT_SPI_BUS, device: int = DEFAULT_SPI_DEVICE,
     unknown VERSION does not warrant identifying the connected chip as CC1101.
     """
     _valid_address(bus, device, speed_hz)
+    from .cc1101_bus import spi_device_path
     if spi_factory is None:
         node = spi_device_path(bus, device)
         if not node.exists():
@@ -98,19 +95,28 @@ def probe(bus: int = DEFAULT_SPI_BUS, device: int = DEFAULT_SPI_DEVICE,
                 "python3-spidev fehlt im System-Python. Installieren: sudo apt install python3-spidev"
             ) from exc
         spi_factory = spidev.SpiDev
+        # Real hardware: never interrupt a running receiver with a probe.
+        from .cc1101_bus import CC1101Busy, cc1101_device_lock
+        try:
+            with cc1101_device_lock(node):
+                return _probe_registers(bus, device, speed_hz, spi_factory)
+        except CC1101Busy as exc:
+            raise CC1101ProbeError(str(exc)) from exc
+    return _probe_registers(bus, device, speed_hz, spi_factory)
 
+
+def _probe_registers(bus: int, device: int, speed_hz: int, spi_factory: Callable) -> dict:
+    # Same allowlisted path as the receiver: every byte passes check_payload.
+    from .cc1101_bus import PARTNUM, SNOP, VERSION, SafeCC1101Bus
+    import time
     spi = None
     try:
-        spi = spi_factory()
-        spi.open(bus, device)
-        spi.mode = 0
-        spi.max_speed_hz = speed_hz
-        spi.bits_per_word = 8
-        part = spi.xfer2([0xF0, 0x00])
-        version = spi.xfer2([0xF1, 0x00])
-        if (len(part) != 2 or len(version) != 2 or
-                any(type(x) is not int or not 0 <= x <= 255 for x in (part[1], version[1]))):
-            raise CC1101ProbeError("Ungueltige Antwort vom SPI-Controller")
+        spi = SafeCC1101Bus(bus, device, speed_hz=speed_hz, spi_factory=spi_factory)
+        # Wake a chip left in SPWD (e.g. by a finished receiver) before reading.
+        spi.strobe(SNOP)
+        time.sleep(0.002)
+        partnum = spi.read_status(PARTNUM)
+        ver = spi.read_status(VERSION)
     except (OSError, IOError) as exc:
         raise CC1101ProbeError(
             f"SPI-Zugriff fehlgeschlagen: {exc}. SPI, Verkabelung und Benutzerrechte pruefen."
@@ -119,7 +125,6 @@ def probe(bus: int = DEFAULT_SPI_BUS, device: int = DEFAULT_SPI_DEVICE,
         if spi is not None:
             spi.close()
 
-    partnum, ver = part[1], version[1]
     plausible = partnum == 0x00 and ver not in (0x00, 0xFF)
     return {
         "spi_bus": bus,
@@ -130,6 +135,6 @@ def probe(bus: int = DEFAULT_SPI_BUS, device: int = DEFAULT_SPI_DEVICE,
         "result": ("Plausible CC1101-Registerantwort; RF-Funktion noch ungeprueft"
                    if plausible else "Keine belastbare CC1101-Erkennung (Verdrahtung/Modul pruefen)"),
         "probe_mode": "SPI-Statusregister lesen, keine Funk-Konfigurationsbefehle",
-        "rx_implemented": False,
+        "rx_implemented": True,
         "tx_implemented": False,
     }

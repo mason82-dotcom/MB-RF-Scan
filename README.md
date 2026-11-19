@@ -94,7 +94,9 @@ ls -l /dev/spidev1.0
 /usr/bin/python3 -m keyrfmonitor cc1101 probe
 ```
 
-Die Anschlussbelegung, 3,3-V-Vorsichtsmaßnahmen und die Grenzen des Tests sind in **[docs/CC1101.md](docs/CC1101.md)** beschrieben. Das Modul wird nur über SPI ausgelesen; in Version 0.2.0 gibt es **keine** CC1101-RX-Konfiguration, keinen HF-TX-Treiber und keine physische Replay-Funktion.
+**Nur-Empfang parallel zu ADS-B (ab v0.10.0):** `/usr/bin/python3 -m keyrfmonitor cc1101 listen --seconds 60` oder die Dashboard-Karte *CC1101-Empfang*. Erfasst werden nur RSSI-basierte Burst-/Paar-Metadaten, kein Senden und keine Bitdaten ([ADR-0001](docs/adr/0001-cc1101-rx-only.md)).
+
+Die Anschlussbelegung, 3,3-V-Vorsichtsmaßnahmen und die Grenzen des Tests sind in **[docs/CC1101.md](docs/CC1101.md)** beschrieben. Seit v0.10.0 gibt es eine reine Empfangskonfiguration; es gibt **keinen** HF-TX-Treiber und keine physische Replay-Funktion.
 
 ## Befristeter Scanmodus (Neu in 0.3.0)
 

@@ -1,5 +1,20 @@
 # Änderungsprotokoll
 
+## v0.10.0 – CC1101-Empfang parallel zu ADS-B (nur Empfang)
+
+- Neuer zweiter Empfänger: CC1101 an SPI1 tastet den Empfangspegel (RSSI) mit 1 kHz ab und erkennt Bursts (80–350 ms) und Paare (400–650 ms Startabstand) – auch während `dump1090.service` den RTL-SDR belegt. Entscheidung und Alternativen: `docs/adr/0001-cc1101-rx-only.md`.
+- Sicherheitsschicht `SafeCC1101Bus`: Jeder SPI-Zugriff wird gegen eine Positivliste geprüft. STX, SFSTXON, TX-FIFO, RX-FIFO-Lesen, PATABLE ≠ 0x00, Burst-Schreiben und GDO-Datenausgang werden vor dem Zugriff abgelehnt (vollständiger Test aller 1- und 2-Byte-Befehle).
+- Konfiguration 433,9155 MHz, 2-FSK, 101,6 kHz Kanalbandbreite, asynchroner Modus ohne Datenausgang; GDO0 = Carrier Sense, GDO1/2 hochohmig. Register werden nach dem Schreiben zurückgelesen und geprüft; beim Beenden SIDLE + SPWD.
+- Ereignisse mit `source = "cc1101"` und `rssi_dbm` in der bestehenden Datenbank; keine Bits, Rahmen oder Schlüsseldaten. Pegel sind unkalibriert.
+- CLI `keyrfmonitor cc1101 listen --seconds N`, Web-API `/api/cc1101/rx/status`, `POST /api/cc1101/rx/start|stop` (CSRF-geschützt), Dashboard-Karte „CC1101-Empfang“ mit Pegel, Rauschreferenz, Abtastrate und Lücken. Der Empfang startet nie automatisch.
+- Gerätesperre `cc1101.lock`: Probe, Konsolenmessung und Webempfang können sich nicht gegenseitig stören.
+- UX-Audit der neuen Karte: verständliche Fehlermeldungen mit nächstem Schritt, technische Details per „Fehlerdetails kopieren“, Rückmeldung bleibt in der Karte.
+- Tests: Testklassen werden nicht mehr doppelt ausgeführt (Import der HTTP-Basisklasse als Modul).
+- Code-Review vor dem Merge (10 Befunde, alle behoben): GDO-Konfiguration als Positivliste (auch RX_HARD_DATA/Symboltakt gesperrt), nur PARTNUM/VERSION/RSSI/MARCSTATE lesbar (PKTSTATUS nicht), Gerätesperre auf `/dev/spidev1.0` statt im Datenverzeichnis, Dauerträger blockieren die Rauschreferenz nicht mehr, Generationszähler gegen Start/Stopp-Wettläufe und kein RX nach Stopp während der Konfiguration, Ereignisse über eigenen Schreib-Thread, MARCSTATE doppelt gelesen und SFRX nur nach IDLE, `probe` über dieselbe Sicherheitsschicht, verständliche Meldung bei fehlender `spi`-Gruppe, Dashboard zeigt auch 409/403-Meldungen.
+- Aufwecken nach SPWD: SNOP + 2 ms vor dem ersten Zugriff (sonst liest die nächste Probe 0xFF bzw. geht SRES verloren).
+- Auf dem Pi verifiziert: Chip konfiguriert, 1000 Hz Abtastung, Rauschreferenz ca. −94 dBm, parallele Probe wird gesperrt, Empfang → Probe → Empfang mehrfach fehlerfrei.
+
+
 ## v0.9.5 – Code-Review: Robustheit von Empfang, Archiv, Dashboard und Pi-Skripten
 
 - Fehler beim Schreiben des optionalen I/Q-Archivs (Platte voll, E/A-Fehler, ungültiges Burstfenster) beenden den Empfang nicht mehr; der Burst wird als nicht erfasst gezählt, der Status nennt `iq_trace_errors`.

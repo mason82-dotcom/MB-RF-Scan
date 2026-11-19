@@ -17,8 +17,8 @@ def available_sources() -> list[dict]:
         },
         {
             "id": "cc1101", "name": "CC1101 (Hardware)",
-            "mode": "unavailable", "hardware_required": True,
-            "implemented": False,
-            "description": "SPI-Probe vorbereitet; echte Paket- und RX-Konfiguration noch nicht umgesetzt",
+            "mode": "rssi_receive_only", "hardware_required": True,
+            "implemented": True,
+            "description": "Nur Empfang an SPI1: RSSI-Abtastung mit 1 kHz, Burst-/Paar-Metadaten, kein Senden, keine Bitdaten",
         },
     ]

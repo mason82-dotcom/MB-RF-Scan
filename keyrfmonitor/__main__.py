@@ -37,6 +37,55 @@ def analyze(path: Path, config: RFConfig) -> int:
     return 0
 
 
+DATA_DIR = Path.home() / ".local/share/keyrfmonitor"
+
+
+def _cc1101_listen(seconds: int, database: str | None) -> int:
+    """Receive-only RSSI burst capture on SPI1; Ctrl+C ends early."""
+    import time
+    from .hardware.cc1101_rx import CC1101Receiver
+    from .storage import EventStore
+    if type(seconds) is not int or not 1 <= seconds <= 3600:
+        print("CC1101: --seconds muss 1 bis 3600 sein.", file=sys.stderr)
+        return 2
+    db_path = Path(database) if database else DATA_DIR / "events.sqlite3"
+    store = EventStore(db_path)
+
+    def on_event(event: dict) -> None:
+        store.insert(event)
+        if event["kind"] == "burst":
+            print(f"Burst  {event['start_s']:8.3f} s | {event['duration_ms']:5.0f} ms | "
+                  f"+{event['peak_rise_db']:.1f} dB | {event['rssi_dbm']:.1f} dBm", flush=True)
+        else:
+            print(f"  → Paar: {event['start_gap_ms']:.0f} ms Startabstand", flush=True)
+
+    receiver = CC1101Receiver(on_event)
+    print("=== CC1101 Nur-Empfang (RSSI, 433,92 MHz, SPI1) – kein Senden, keine Bitdaten ===",
+          flush=True)
+    ok, message = receiver.start()
+    if not ok:
+        print(f"CC1101: {message}", file=sys.stderr)
+        store.close()
+        return 2
+    try:
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline and receiver.status()["state"] == "running":
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        print("Abbruch durch Benutzer.", flush=True)
+    finally:
+        status = receiver.status()
+        receiver.stop()
+        store.close()
+    print(f"Ergebnis: {status['burst_count']} Bursts, {status['pair_count']} Paare; "
+          f"Rauschreferenz {status['baseline_dbm']} dBm; {status['samples']} Abtastungen, "
+          f"{status['sample_rate_hz']} Hz, {status['sample_gaps']} Lücken > 3 ms.")
+    if status["error"]:
+        print(f"CC1101: {status['error']}", file=sys.stderr)
+        return 2
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="keyrfmonitor", description="Eigenständige passive RF-Diagnose")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -67,6 +116,12 @@ def main(argv=None) -> int:
                           help=f"Chip-Select (Standard CE{DEFAULT_SPI_DEVICE})")
     cc_probe.add_argument("--allow-spi0", action="store_true",
                           help="SPI0 trotz Pironman-5-RGB-LEDs verwenden")
+    cc_listen = cc_sub.add_parser(
+        "listen", help="Nur-Empfang: RSSI-Bursts auf SPI1 erfassen (kein Senden)")
+    cc_listen.add_argument("--seconds", type=int, default=60,
+                           help="Messdauer in Sekunden (1 bis 3600)")
+    cc_listen.add_argument("--database", default=None,
+                           help="SQLite-Datei (Standard wie Webdienst)")
     args = parser.parse_args(argv)
     if args.cmd == "cc1101":
         from .hardware.cc1101 import (
@@ -82,8 +137,11 @@ def main(argv=None) -> int:
                   f"CE{DEFAULT_SPI_DEVICE} ===")
             for item in wiring_lines():
                 print("-", item)
-            print("CC1101-VCC nur 3,3 V; GDO-Pins sind derzeit unbenutzt.")
+            print("CC1101-VCC nur 3,3 V. GDO0 = Carrier Sense, GDO2 hochohmig; "
+                  "kein Datenausgang.")
             return 0
+        if args.cc_action == "listen":
+            return _cc1101_listen(args.seconds, args.database)
         if args.bus == 0 and not args.allow_spi0 and spi0_used_by_pironman():
             print("CC1101: SPI0 wird von den Pironman-5-RGB-LEDs genutzt. CC1101 an SPI1 "
                   "anschliessen (cc1101 wiring) oder bewusst --allow-spi0 angeben.",

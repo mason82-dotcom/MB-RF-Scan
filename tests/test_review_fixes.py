@@ -22,7 +22,7 @@ from keyrfmonitor.iq_trace import TraceArchive, TraceCollector
 from keyrfmonitor.receiver import Monitor
 from keyrfmonitor.storage import EventStore
 
-from test_summary_http import SummaryHTTPTests
+import test_summary_http as _http_base
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -218,8 +218,8 @@ class LanListenerRetryTests(unittest.TestCase):
 
 
 class IQErrorHTTPTests(unittest.TestCase):
-    setUp = SummaryHTTPTests.setUp
-    tearDown = SummaryHTTPTests.tearDown
+    setUp = _http_base.SummaryHTTPTests.setUp
+    tearDown = _http_base.SummaryHTTPTests.tearDown
 
     def _status(self, path):
         try:

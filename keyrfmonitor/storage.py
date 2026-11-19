@@ -103,7 +103,7 @@ class EventStore:
         event = event.copy()
         event.setdefault("source", "rtl_sdr")
         event.setdefault("simulated", False)
-        if event["source"] not in ("rtl_sdr", "cc1101_sim"):
+        if event["source"] not in ("rtl_sdr", "cc1101", "cc1101_sim"):
             raise ValueError("Unknown receiver source")
         if bool(event["simulated"]) != (event["source"] == "cc1101_sim"):
             raise ValueError("Simulation flag must match receiver source")

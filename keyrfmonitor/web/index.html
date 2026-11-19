@@ -43,12 +43,29 @@
       <div class="status-line"><span>dump1090.service</span><b id="adsb-status">–</b></div>
       <div class="status-line"><span>Kalibrierung</span><b id="cal-status">–</b></div>
       <div class="status-line"><span>Temporärer Konsolenscan</span><b id="external-scan">Inaktiv</b></div>
-      <div class="status-line"><span>CC1101 (SPI)</span><b>Vorbereitet · kein RX/TX</b></div>
+      <div class="status-line"><span>CC1101 (SPI1)</span><b id="cc-summary">–</b></div>
       <div class="status-line"><span>IQ-Diagnoseaufnahmen</span><b id="iq-recordings-status">Nur bei explizitem --iq</b></div>
       <div class="status-line"><span>FSK-Symbolhypothesen</span><b>Nur bei --iq, unverifiziert</b></div>
       <div class="info">Für die Web-Messung ist weiterhin eine manuelle Freigabe nötig. Der separate befristete Konsolenmodus übernimmt ADS-B-Stopp und -Neustart kontrolliert und ist nur mit ausdrücklicher sudo-Freigabe ausführbar.</div>
       <pre id="backend-error" class="error" hidden></pre>
     </article>
+  </section>
+  <section class="panel cc-panel" aria-labelledby="cc-title">
+    <div class="panel-head">
+      <div><h3 id="cc-title">CC1101-Empfang</h3><span class="subtle">Zweiter Empfänger an SPI1 · läuft parallel zu ADS-B · nur Empfang</span></div>
+      <div class="controls"><button id="cc-start" class="primary" type="button" disabled>CC1101-Empfang starten</button><button id="cc-stop" class="secondary" type="button" disabled>CC1101-Empfang beenden</button></div>
+    </div>
+    <div class="cc-grid">
+      <div class="status-line"><span>Zustand</span><b id="cc-state">–</b></div>
+      <div class="status-line"><span>Aktueller Pegel</span><b id="cc-rssi">–</b></div>
+      <div class="status-line"><span>Rauschreferenz</span><b id="cc-baseline">–</b></div>
+      <div class="status-line"><span>Bursts / Paare</span><b id="cc-counts">–</b></div>
+      <div class="status-line"><span>Abtastung</span><b id="cc-rate">–</b></div>
+      <div class="status-line"><span>Frequenz</span><b id="cc-freq">–</b></div>
+    </div>
+    <p id="cc-message" class="cc-message" role="status" aria-live="polite"></p>
+    <div id="cc-error" class="cc-error" role="alert" hidden><span id="cc-error-text"></span><button id="cc-copy-error" class="secondary" type="button">Fehlerdetails kopieren</button></div>
+    <div class="info">Der CC1101 tastet nur den Empfangspegel (RSSI) mit 1 kHz ab. Pegel sind unkalibriert und nicht mit dem RTL-SDR-SNR vergleichbar. Kein Senden, keine Bitdaten, kein Zugriff auf ADS-B.</div>
   </section>
   <section class="panel history" aria-labelledby="history-title">
     <div class="panel-head history-head">

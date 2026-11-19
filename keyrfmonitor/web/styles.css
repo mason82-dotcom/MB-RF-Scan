@@ -141,3 +141,4 @@
 .iq-downloads p{margin:7px 0}
 .iq-download-buttons{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
 .iq-download-buttons button{max-width:100%}
+.cc-panel{margin-top:13px}.cc-panel .panel-head{align-items:flex-start}.cc-grid{display:grid;grid-template-columns:repeat(3,1fr);column-gap:24px}@media(max-width:900px){.cc-grid{grid-template-columns:1fr}.cc-panel .panel-head{flex-direction:column}}.cc-message{margin:14px 0 0;color:var(--muted);font-size:13px;min-height:1.5em}.cc-error{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:12px;padding:12px 14px;background:#392b2b;border:1px solid #6b3b3b;border-radius:8px;color:#f7bbbb;font-size:13px}.cc-error[hidden]{display:none}.cc-error button{flex-shrink:0;padding:8px 12px}
