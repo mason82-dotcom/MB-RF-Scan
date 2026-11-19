@@ -5,6 +5,7 @@ All tests use a fake SPI device. NO radio or antenna can be activated.
 import contextlib
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -199,12 +200,12 @@ class TestConductedTx(unittest.TestCase):
 
     def test_cli_rejects_non_interactive_execution(self):
         from keyrfmonitor.__main__ import main
-        with patch("sys.stdin.isatty", return_value=False), contextlib.redirect_stderr(StringIO()):
+        with patch("sys.stdin", new=SimpleNamespace(isatty=lambda: False)), contextlib.redirect_stderr(StringIO()):
             self.assertEqual(main(["cc1101", "lab-tx", "--execute", "--confirm-conducted"]), 2)
 
     def test_cli_wrong_manual_phrase_never_calls_driver(self):
         from keyrfmonitor.__main__ import main
-        with (patch("sys.stdin.isatty", return_value=True),
+        with (patch("sys.stdin", new=SimpleNamespace(isatty=lambda: True)),
               patch("builtins.input", return_value="NO"),
               patch.object(tx, "run_one_shot") as run,
               contextlib.redirect_stdout(StringIO()),
@@ -214,7 +215,7 @@ class TestConductedTx(unittest.TestCase):
 
     def test_cli_manual_phrase_calls_one_shot_once(self):
         from keyrfmonitor.__main__ import main
-        with (patch("sys.stdin.isatty", return_value=True),
+        with (patch("sys.stdin", new=SimpleNamespace(isatty=lambda: True)),
               patch("builtins.input", return_value="SEND 1 LAB PACKET"),
               patch.object(tx, "run_one_shot", return_value={"status": "simulated"}) as run,
               contextlib.redirect_stdout(StringIO()),
